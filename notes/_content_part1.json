@@ -1,0 +1,740 @@
+{
+  "0": {
+    "short": [
+      "This is a map of what an applied LLM interview round tests after a model exists. The tests cover three skills: define a technique in a few lines, defend a system design, and debug broken PyTorch code calmly.",
+      "The interviewers want precise answers, not a full lecture. A short answer with one number or one failure mode beats a long one."
+    ],
+    "picture": [
+      "Real example: a bank builds a KYC pipeline. A scanner reads ID cards (OCR), an LLM extracts fields, a reviewer checks doubtful cases, and a server answers requests all day.",
+      "The interview mirrors that pipeline. It asks about the parts that come after training: serving, tuning, retrieval, agents, and evaluation.",
+      "Round 1 is a PyTorch debug round, about 10 minutes. You read broken code and name the bug class: shape, device, dtype, mode, or gradient.",
+      "Round 2 is system design, about 5 to 15 minutes. You draw boxes for a use case such as document extraction or support chat, and you name the failure points.",
+      "Round 3 is LLM techniques, about 30 minutes. This is the longest round. Typical terms: KV cache, quantization, LoRA, speculative decoding, RAG, agents, MCP (a standard way for a model to call outside tools).",
+      "Past candidates heard feedback like: you know the basics, now learn what comes after the model is built.",
+      "A good answer has three parts. Give the definition in one line. Give when you use it in one line. Give one trade-off in one line. Then stop.",
+      "If the interviewer pushes, add one number or one failure mode. Example: INT4 weights use about 4 times less memory than FP16 weights.",
+      "Silence after your answer is fine. The interviewer will ask a follow-up if they want more."
+    ],
+    "inside": [
+      "Each round tests a different memory. Debug tests habits, design tests structure, and techniques test exact definitions.",
+      "A definition answer must say what is stored, what is computed, and what is saved. Example for KV cache: it stores old keys and values, so the model does not recompute them for each new token.",
+      "A design answer follows a fixed order: input, processing, storage, model call, check of output, human review, monitoring. Draw it left to right.",
+      "A debug answer follows a fixed order: read the error, guess the class, check one tensor shape or device, fix the root cause, run one batch again.",
+      "Numbers prove you understand. Example: a 7B model in FP16 needs about 14 GB just for weights. Say this before someone asks.",
+      "Name the two sides of every trade-off. Example: bigger batches raise throughput but also raise wait time for each user."
+    ],
+    "matters": [
+      "Teams that ship models need people who know the cost after training. Serving cost often exceeds training cost within months.",
+      "Short, exact answers show that you have used the idea. Long answers often show that you have only read about it.",
+      "The same three habits work in real jobs: define clearly, design with failure in mind, debug with a hypothesis."
+    ],
+    "watch": [
+      "Do not dump everything you know about transformers when the question names one term. One candidate talked about building from scratch when asked about quantization. The interviewer cut the answer off.",
+      "Do not say I would use a framework without saying what the loop underneath does. Frameworks hide the idea. The interviewer asks about the idea.",
+      "Do not learn new topics on the morning of the interview. Revise only the one-line answers.",
+      "Do not guess when you do not know. Say what you know, name the part you are unsure about, and reason from first principles."
+    ]
+  },
+  "1": {
+    "short": [
+      "Study the post-build topics first, then RAG, agents and system design, then the foundations. This order matches how often each area appears in interviews.",
+      "The goal is spoken answers that take 20 seconds or less. Reading alone is not enough. You must say each answer aloud."
+    ],
+    "picture": [
+      "Real example: a hospital team must ship a note-summary tool next week. They first learn how to serve and tune a model, because that decides cost and speed. They study the deep math later.",
+      "Block A is post-build LLM techniques. Topics: inference vs training, decoding, KV cache, batching, quantization, LoRA. Plan about one day.",
+      "Block B is RAG, agents, MCP and human review, plus design templates. Draw the boxes by hand. Plan about one day.",
+      "Block C is foundations: attention and the transformer block. This block gives you the why behind block A. Plan about half a day to one day.",
+      "Block D is reference material: loss functions, optimizers, evaluation. Open it only when a why question needs it.",
+      "Rough interview weight: about half on post-build LLM techniques, a quarter on design, and a quarter on debug and foundations.",
+      "Daily loop: read one topic, close it, say the definition aloud, then say one number and one failure mode.",
+      "Tick a topic as understood only when you can explain it to a friend without notes.",
+      "On the last morning, reread only the one-line summary boxes. Do not open new material."
+    ],
+    "inside": [
+      "Spaced repetition works because memory fades. Review a topic after one day, then three days, then on the last morning.",
+      "Speaking aloud forces you to find gaps. If you stall at a word, that word is the gap.",
+      "Group topics by cause. Memory tricks: gradient checkpointing, LoRA, quantization. Speed tricks: KV cache, batching, speculative decoding. Quality tricks: SFT, DPO, distillation.",
+      "Draw each pipeline once with a pen. Hand drawing shows which box you forget.",
+      "Keep a short list of numbers: 2 bytes per FP16 weight, 0.5 byte per INT4 weight, 0.5 MB of KV cache per token for a 7B model with full heads."
+    ],
+    "matters": [
+      "Time is short. A plan that matches interview weight gives the most points per hour.",
+      "Foundations alone do not pass an applied round. Techniques alone fail the why questions. The order links them.",
+      "Calm, rehearsed answers reduce stress, and stress is the main cause of rambling."
+    ],
+    "watch": [
+      "Do not read in a passive way. Reading ten topics once is weaker than saying three topics three times.",
+      "Do not start with the hardest math. It uses time and gives little interview value for applied roles.",
+      "Do not skip the debug round. It is short but it is easy to lose points through panic.",
+      "Do not cram on the last morning. New facts push out old ones and raise anxiety."
+    ]
+  },
+  "2": {
+    "short": [
+      "A debug round shows you broken training or inference code. You must find the bug class, fix the root cause, and prove the fix. The classes are shape, loss, device, dtype, mode, and gradient.",
+      "You win by reasoning aloud with a hypothesis. You lose by changing lines at random."
+    ],
+    "picture": [
+      "Real example: a warehouse OCR model reads labels at 95 percent in training and 40 percent in the live app. The training loop used eval mode in one place and train mode in another. The live app also fed images with a different pixel scale. Two small mismatches caused the drop.",
+      "Technical example: a batch has 2 sequences, 5 tokens each, and hidden size 16. A linear layer built for hidden size 768 receives size 16 on the last axis. The error says the shapes do not multiply. The cause is an embedding size that differs from the layer size.",
+      "Shape bug: a layer expects a certain last dimension. The data has a different one. A wrong reshape can also scramble batch and time axes without any error, which is worse.",
+      "Loss bug: the cross-entropy loss expects raw scores (logits) and integer class labels. If you pass probabilities, the loss applies softmax twice and learning becomes slow.",
+      "Device bug: the model lives on the GPU while the batch stays on the CPU, or the reverse. The error names two devices.",
+      "Dtype bug: labels are floats where integers are needed, or half precision overflows. Loss turns into not-a-number.",
+      "Mode bug: dropout and batch normalization act differently in training and in evaluation. If you forget eval mode at test time, results are noisy and lower.",
+      "Gradient bug: gradients add up across steps unless you clear them. A detached tensor or a no-gradient block cuts the graph, so some weights never update.",
+      "Sequence bug: one layer expects batch first and another expects time first. Shapes can still fit, so the model trains but learns nonsense."
+    ],
+    "inside": [
+      "Shape trace: write the shape after every line. Use tiny numbers like batch 2, time 5, hidden 16, vocabulary 100. The bug shows up where your expected shape and the real shape differ.",
+      "Language-model loss: logits have shape batch x time x vocabulary. Labels have shape batch x time. You flatten both so that each token is one row. Row count must match.",
+      "Mode flags change what layers do. Dropout drops units at random only in training mode. Batch normalization uses batch statistics in training and stored running statistics in evaluation.",
+      "Mixed precision: half-precision numbers have a small range. Small gradients can round to zero and big values can overflow. A loss scale multiplies the loss up before backward, then divides gradients back. A wrong or missing loss scale gives zero updates or not-a-number values.",
+      "Gradient flow: each update needs a path from the loss back to the weight. Frozen weights, detached tensors, and no-gradient blocks break that path.",
+      "Fast check of the whole pipeline: overfit one tiny batch. If loss does not fall to near zero, the bug is in code, not in data size."
+    ],
+    "matters": [
+      "Most real training failures are small plumbing errors. Skill in fast triage saves days of GPU time.",
+      "Interviewers judge your reasoning, not your speed. Saying the layer expects 768 but got 512, so the embedding size is wrong, shows the skill.",
+      "The same checks apply to production. A silent shape or mode bug can degrade a live model for weeks."
+    ],
+    "watch": [
+      "Do not fix the next error message without finding the cause. This creates a chain of patches.",
+      "Do not make random edits. State one hypothesis, test it, and then move on.",
+      "Do not trust that no error means no bug. A swapped axis often runs without any error.",
+      "Do not forget to retrace one batch after the fix. The fix may only move the error to the next layer."
+    ]
+  },
+  "3": {
+    "short": [
+      "Training changes the weights. Inference keeps the weights fixed and only produces answers. Training needs much more memory per parameter than inference.",
+      "Sort every speed or memory trick into one of these two sides first. This makes most interview answers easy."
+    ],
+    "picture": [
+      "Real example: a fraud team trains a model on last year of card payments. That is training. Then the model scores each new payment in 20 milliseconds. That is inference.",
+      "Training loop: show data, run a forward pass, measure the error (the loss), run a backward pass to find how each weight should change, then update the weights. This repeats millions of times.",
+      "Inference loop: take the input, run a forward pass, return the result. No loss. No backward pass. No update.",
+      "During training the framework keeps the activations (the middle results of each layer). The backward pass needs them to compute gradients.",
+      "The optimizer keeps extra numbers per weight. Adam keeps two: a running mean of gradients and a running mean of squared gradients.",
+      "Technical example: training a 7B model with mixed precision and Adam needs about 16 bytes per parameter. That is 2 for BF16 weights, 2 for gradients, and 12 for FP32 master weights plus two Adam values. The total is about 112 GB before activations.",
+      "Inference of the same model in FP16 needs 2 bytes per parameter. That is about 14 GB for weights, plus the KV cache.",
+      "The goals differ. Training wants high throughput and stable learning. Inference wants low delay, high requests per second, and low cost.",
+      "Inference is also not free of state. A chat model keeps a KV cache that grows with every token."
+    ],
+    "inside": [
+      "Forward pass: inputs flow through layers. Each layer multiplies by its weights and passes the result on. Output is a prediction.",
+      "Backward pass: the loss flows back. Each layer uses its stored activations and the incoming signal to produce a gradient for its weights.",
+      "Update step: the optimizer reads the gradient and its own stored values, then writes new weights. Weights are the only thing that changes.",
+      "Inference code should switch to evaluation mode and turn off gradient tracking. This stops the framework from storing activations and stops dropout from acting.",
+      "Classify the tricks: gradient checkpointing, LoRA and QLoRA save training memory. KV cache, quantization, batching and speculative decoding speed up inference."
+    ],
+    "matters": [
+      "Cost planning differs. Training is a one-time or periodic bill. Inference is a bill that grows with every user.",
+      "Memory math decides hardware. A 7B model trains on many GPUs but serves on one.",
+      "Knowing the side lets you pick the right fix. Out-of-memory while training needs checkpointing. Slow answers in production need batching or quantization."
+    ],
+    "watch": [
+      "Do not say inference also learns. It does not, unless you build online learning on purpose.",
+      "Do not forget evaluation mode and no-gradient mode at inference. You waste memory and get wrong dropout behavior.",
+      "Do not count only weights when you plan memory. Add activations for training and the KV cache for inference.",
+      "Do not mix up the side. LoRA does not speed up inference by itself unless you merge it; it mainly saves training memory."
+    ]
+  },
+  "4": {
+    "short": [
+      "Text is cut into tokens, which are small pieces of words, and each token becomes an integer ID. The model outputs one raw score, called a logit, for every token in its vocabulary. Softmax turns these scores into probabilities that add up to one.",
+      "The model never outputs words directly. It outputs a distribution, and a decoding rule picks the next token."
+    ],
+    "picture": [
+      "Real example: a support chatbot sees the text 'My card was decl'. The tokenizer cuts it into pieces such as 'My', ' card', ' was', ' decl'. Each piece maps to an ID.",
+      "Rule of thumb: one token is about 0.75 English words. Code, numbers and rare languages cost more tokens per word.",
+      "The model reads all tokens and builds a vector at the last position. A final layer turns that vector into one logit per vocabulary entry.",
+      "Technical example: with a vocabulary of 128,000 tokens, the model produces 128,000 logits at each step. Each logit is a real number and can be negative.",
+      "Tiny example with three tokens and logits 4, 2 and 1. Softmax gives about 0.84, 0.11 and 0.04. The biggest score gets a much bigger share.",
+      "A decoding rule picks one token from this distribution. The token is added to the text. The model then runs again on the longer text.",
+      "During training the target is the true next token. The loss is the negative log of the probability the model gave to that true token. A probability of 0.9 gives a small loss. A probability of 0.01 gives a large loss.",
+      "At each position of a training text, the model predicts the next token. A text of 1,000 tokens gives 1,000 training signals at once.",
+      "Logits are cheap to inspect. Many safety and format tools edit logits before softmax, for example to ban a token or force valid JSON."
+    ],
+    "inside": [
+      "Tokenizer: a fixed table learned from data. It maps text pieces to IDs and back. It does not change during model use.",
+      "Embedding table: each ID selects one row, a vector of numbers. The model works on these vectors, not on IDs.",
+      "Output layer: it multiplies the final vector by a matrix with one row per vocabulary entry. Each product is the logit for that token.",
+      "Softmax in words: raise e to the power of each logit so all values are positive, then divide by the sum. Formula: $p_i = e^{z_i} / \\sum_j e^{z_j}$.",
+      "Log-probabilities are used in practice. Multiplying many small probabilities underflows to zero. Adding their logs does not.",
+      "The loop of predict, pick, append is called autoregressive generation. Each step depends on all earlier steps."
+    ],
+    "matters": [
+      "Every sampling control works at this step. Temperature, top-k and top-p all edit logits or probabilities.",
+      "Token count sets cost and limits. Providers charge per token, and the context window is counted in tokens.",
+      "Tokenization explains odd failures. A model may miscount letters in a word because it sees pieces, not letters."
+    ],
+    "watch": [
+      "Do not say the model outputs words. It outputs a distribution. The decoder chooses.",
+      "Do not call logits probabilities. Logits can be negative and do not add up to one.",
+      "Do not forget that the vocabulary is large. Softmax over 128,000 entries at every step is a real cost.",
+      "Do not assume tokens equal words. Budget for about 1.3 tokens per English word, and more for other scripts."
+    ]
+  },
+  "5": {
+    "short": [
+      "Greedy decoding picks the single most likely token at every step. It is fast and gives the same answer each time. It can repeat itself and miss better full sentences.",
+      "Use it when you want a stable and exact result, such as field extraction or classification."
+    ],
+    "picture": [
+      "Real example: a bank KYC tool reads an ID and must output the name field exactly. Creative variation would be a bug. Greedy decoding gives one stable answer.",
+      "At every step the decoder looks at the probabilities for all tokens and takes the arg max, which means the largest one.",
+      "The chosen token is appended. The model runs again. The loop stops at an end token or a length limit.",
+      "Same prompt and same weights give the same text. This helps tests and audits.",
+      "Technical example: the next-token probabilities are 0.40 for 'A' and 0.60 for 'B'. Greedy takes 'B'. After 'B' the best next token has only 0.30. The full path scores 0.18. After 'A' the best next token has 0.90. That path scores 0.36. Greedy never sees it.",
+      "This is the short-sighted problem. A locally best step can lead to a worse whole answer.",
+      "Long outputs can loop. The text repeats a phrase because the same context keeps giving the same top token.",
+      "Setting temperature to zero in most tools means greedy decoding."
+    ],
+    "inside": [
+      "No random numbers are used. The only inputs are the weights and the text so far.",
+      "Per step cost is one forward pass. Greedy adds no extra work for choosing.",
+      "The method needs no sorting. A single scan for the largest value is enough.",
+      "Greedy does not find the most likely full sequence. Finding it exactly would need to test all paths, which is too expensive. Beam search tests a few.",
+      "Rules like repetition penalty edit logits before the pick. They help against loops but also change meaning if too strong."
+    ],
+    "matters": [
+      "Structured output needs stable output. JSON, SQL, field extraction and labels work well with greedy.",
+      "Repeatable output helps debugging. You can replay a failure with the same text.",
+      "It is the cheapest decoding rule. It is a good baseline before you try anything else."
+    ],
+    "watch": [
+      "Do not say greedy gives the best sentence. It gives the best next token at each step.",
+      "Do not use it for open chat or story writing. Text turns flat and repetitive.",
+      "Do not expect bit-exact repeats on a busy GPU. Floating-point order and batch mix can still flip a near tie.",
+      "Do not forget loops. Set a length limit and stop tokens."
+    ]
+  },
+  "6": {
+    "short": [
+      "Temperature divides the logits before softmax. A low value makes the top token dominate. A high value spreads probability to many tokens.",
+      "It changes how random the output is. It does not change what the model knows."
+    ],
+    "picture": [
+      "Real example: a SQL assistant needs the same correct query each time. A brainstorming tool for marketing slogans needs variety. The first uses temperature near 0. The second uses 0.8 to 1.0.",
+      "Think of temperature as a confidence dial on the distribution.",
+      "Technical example with logits 4, 2 and 1. At temperature 1 the probabilities are about 0.84, 0.11 and 0.04.",
+      "At temperature 0.5 the logits become 8, 4 and 2. The probabilities are about 0.98, 0.02 and 0.002. The top token almost always wins.",
+      "At temperature 2 the logits become 2, 1 and 0.5. The probabilities are about 0.63, 0.23 and 0.14. The weak tokens now appear often.",
+      "The order of tokens never changes. The best token stays best. Only the gap between tokens changes.",
+      "As temperature goes to zero, the result approaches greedy decoding.",
+      "As temperature goes very high, all tokens approach equal chance, and the text becomes noise."
+    ],
+    "inside": [
+      "What moves: each logit is divided by T. This is a scalar operation on a vector of vocabulary size.",
+      "What is compared: after softmax, the sampler draws a token in proportion to its probability.",
+      "Formula: $p_i = e^{z_i/T} / \\sum_j e^{z_j/T}$. Dividing by a small T makes big gaps even bigger before the exponent.",
+      "Nothing in the model weights is updated. Temperature is a run-time setting only.",
+      "Temperature works together with top-k, top-p or min-p. Temperature changes the shape. The filters cut the tail."
+    ],
+    "matters": [
+      "It is the first knob in every product that uses an LLM. Correct values reduce errors in extraction and reduce dull text in chat.",
+      "Higher temperature raises the chance of wrong facts, because unlikely tokens are chosen more often.",
+      "Teams often set different values per task in the same product."
+    ],
+    "watch": [
+      "Do not say temperature makes the model smarter or dumber. It only changes sampling.",
+      "Do not expect temperature zero to give bit-exact repeats on GPUs. Floating-point order and batching can change results.",
+      "Do not raise temperature to fix repeated text without checking top-p. A wide tail at high T creates nonsense.",
+      "Do not forget that some APIs forbid zero and expect a tiny value instead."
+    ]
+  },
+  "7": {
+    "short": [
+      "Top-k, top-p and min-p cut the long tail of unlikely tokens before sampling. The model then samples only from the kept tokens, after rescaling their probabilities to add up to one.",
+      "Top-k keeps a fixed count. Top-p keeps a count that adapts to the model's confidence. Min-p keeps tokens close to the best one."
+    ],
+    "picture": [
+      "Real example: a chat assistant writes a reply to an upset customer. Without a cut, a rare token like a random foreign word can appear with small probability and ruin the sentence. A tail filter removes it.",
+      "Tiny distribution: tokens with probabilities 0.50, 0.25, 0.12, 0.06, 0.04 and 0.03.",
+      "Top-k with k equal to 3 keeps the first three. Their sum is 0.87. After rescaling they become about 0.57, 0.29 and 0.14.",
+      "Top-p with p equal to 0.9 sorts tokens and adds probabilities until the sum reaches 0.9. The sums are 0.50, 0.75, 0.87, 0.93. So four tokens stay.",
+      "Min-p with value 0.2 sets a threshold of 0.2 times the top probability, which is 0.10. Tokens with at least 0.10 stay. That keeps three tokens.",
+      "When the model is sure, for example the top token has 0.95, top-p keeps one or two tokens, but top-k with 40 keeps 40.",
+      "When the model is unsure, many tokens have small shares. Top-k with 40 may cut good options, while top-p keeps more.",
+      "Typical engine order: logits, then temperature, then top-k, then top-p or min-p, then sample.",
+      "Typical settings: top-p 0.9 to 0.95 for chat. Top-k 40 is a common older default."
+    ],
+    "inside": [
+      "Top-k sorts the probabilities and zeroes everything below the k-th place.",
+      "Top-p sorts the probabilities from large to small, finds the smallest set whose sum reaches p, and zeroes the rest.",
+      "Min-p compares each probability with the top one. It keeps token i only when $p_i \\ge m \\cdot p_{max}$. The rule scales with confidence.",
+      "After zeroing, the engine divides each kept value by the sum of kept values. This is renormalization.",
+      "Min-p stays stable at high temperature. A flat distribution has a low top probability, so the threshold is low, and more tokens stay. A peaked one has a high threshold."
+    ],
+    "matters": [
+      "These filters control the balance of safety and variety in generated text.",
+      "They cost almost nothing next to the forward pass, so there is no reason to skip them.",
+      "Interviewers like to ask the difference between top-k and top-p. The answer is fixed count versus adaptive count."
+    ],
+    "watch": [
+      "Do not forget that top-p of 1.0 and top-k of 0 means no filtering in most engines.",
+      "Do not assume the same order in every engine. Applying top-p before temperature gives a different set than after.",
+      "Do not combine very small k with very small p without need. The result is almost greedy.",
+      "Do not use these filters to fix wrong facts. They remove odd tokens but cannot add knowledge."
+    ]
+  },
+  "8": {
+    "short": [
+      "Beam search keeps the B best partial sentences at every step instead of one. It scores each by the sum of log-probabilities and returns the best finished one.",
+      "It suits tasks with one right answer, such as translation or OCR. It costs about B times more than greedy and gives bland text in open chat."
+    ],
+    "picture": [
+      "Real example: a warehouse OCR model reads a serial number from a blurry label. One wrong early character ruins everything. Beam search keeps several candidate readings and picks the best whole string.",
+      "Greedy keeps one path. Beam search with width 4 keeps four paths alive.",
+      "At each step every path is extended by every possible next token. That gives B times vocabulary-size candidates.",
+      "The engine scores all candidates and keeps only the best B overall. The other candidates are dropped.",
+      "Technical example: path A starts with probability 0.4, path B with 0.6. Greedy keeps only B and ends at a total of 0.18. Beam search with width 2 keeps both. Path A reaches 0.36. Beam search finds the better full sentence.",
+      "Scores are sums of log-probabilities. A product of many small numbers underflows. A sum of logs does not.",
+      "Every extra token adds a negative number to the sum. So short sentences have an unfair advantage. A length penalty divides the score by a power of the length to fix this.",
+      "Cost grows with B. Width 5 costs about five times the compute and memory of greedy for the cache.",
+      "Beam search is deterministic. Same input gives the same output."
+    ],
+    "inside": [
+      "State stored: for each beam, the token list, the total log-score, and its KV cache entries.",
+      "Compared: the scores of B times V candidates. The engine takes a top-B selection across all of them.",
+      "Updated: when beams share a prefix, the cache can be shared or copied. When a beam is dropped, its cache is freed.",
+      "A beam that emits the end token moves to a finished list. Search stops when the best finished score cannot be beaten by any live beam, or at a length limit.",
+      "Formula: score of a sentence is $\\sum_t \\log p(y_t | y_{<t})$, divided by length to a power alpha."
+    ],
+    "matters": [
+      "It treats decoding as a search over whole sequences, not a single choice. This is a key idea.",
+      "It raises accuracy for tasks like translation, speech and OCR, where output must match one truth.",
+      "It shows the trade-off between quality and cost clearly, which is easy to explain in an interview."
+    ],
+    "watch": [
+      "Do not confuse beam search with sampling. It is deterministic and it does not add variety.",
+      "Do not use large beams for chat. The text gets generic and repetitive.",
+      "Do not forget length normalization. Without it, short outputs win.",
+      "Do not forget the memory cost. Each beam holds its own cache, so large beams cut your batch size."
+    ]
+  },
+  "9": {
+    "short": [
+      "Prefill reads the whole prompt in one parallel pass. Decode then makes one token per step. Prefill is limited by compute. Decode is limited by memory bandwidth.",
+      "Time to first token (TTFT) mostly reflects queue wait plus prefill. Inter-token latency reflects decode."
+    ],
+    "picture": [
+      "Real example: a support chat sends a 3,000-token policy document plus a short question. The user waits for the first word. Then the answer streams out. The wait is prefill. The streaming speed is decode.",
+      "Prefill: all prompt tokens enter the model together. The GPU does large matrix multiplications and stays busy with math. It also builds the KV cache.",
+      "Decode: each step handles one new token. The GPU must read all the weights and the whole KV cache from memory to produce that single token. Math units mostly wait for data.",
+      "TTFT is the time from request to first output token. It includes waiting in the queue, then prefill.",
+      "Inter-token latency (ITL), also called time per output token, is the gap between two output tokens. It sets how smooth the stream feels.",
+      "Tokens per second can mean per user or for the whole server. Always say which one.",
+      "Percentiles matter. p50 is the middle case. p99 is the slow one that one user in a hundred sees. Service promises are often made at p95 or p99.",
+      "Technical example: a 14 GB model on a GPU with 2 TB per second memory bandwidth reads 14 GB in 7 ms. So one sequence can decode at most about 140 tokens per second, whatever the compute speed.",
+      "Prefill example: a 2,000-token prompt on a 7B model needs about 28 teraflops of math. A modern data-center GPU does this in roughly 0.1 to 0.2 seconds."
+    ],
+    "inside": [
+      "Total latency is about TTFT plus (output tokens minus one) times ITL.",
+      "Prefill is parallel across tokens, so cost grows with prompt length but uses the hardware well.",
+      "Decode is serial across tokens, because each token needs the previous one. This cannot be parallelized inside one request.",
+      "Batching helps decode. One read of the weights serves every request in the batch, so more users share the same memory cost.",
+      "Long prompts can block decode steps of other users. Chunked prefill splits a big prompt into pieces to avoid this."
+    ],
+    "matters": [
+      "Users judge a chat by TTFT first and by streaming speed second.",
+      "Each fix targets one phase. Long prompts need prefill fixes like prefix caching. Slow streaming needs decode fixes like quantization or speculative decoding.",
+      "Capacity planning needs both numbers. Mixing them leads to wrong GPU counts."
+    ],
+    "watch": [
+      "Do not mix up the phases. Long prompts hurt TTFT. Long answers hurt total time.",
+      "Do not quote only the average. Tail latency decides user trust.",
+      "Do not assume bigger batches are free. Throughput rises, but each user may wait longer.",
+      "Do not state decode is compute-bound. At small batch it is memory-bandwidth-bound."
+    ]
+  },
+  "10": {
+    "short": [
+      "The KV cache stores the keys and values of all past tokens. Each new token then computes only its own key and value and reuses the rest. This avoids repeating work at every step.",
+      "The cost is memory. The cache grows with sequence length and with the number of users, and it can exceed the weights."
+    ],
+    "picture": [
+      "Real example: a legal assistant answers questions about a 20-page contract kept in the prompt. Without a cache, each new word would re-read the whole contract through every layer. With the cache, the contract is processed once.",
+      "In attention, each token makes a query, a key and a value. The query asks what matters. Keys are labels. Values are the content to mix.",
+      "A new token's query is compared with the keys of all earlier tokens. The resulting weights mix their values.",
+      "In a causal model, earlier tokens never change. Their keys and values stay the same forever. So the model computes them once and stores them.",
+      "Without the cache, token 1,000 recomputes keys and values for 999 earlier tokens. Total work over the answer grows with the square of length.",
+      "With the cache, each step computes one new key and one new value per layer, then reads the stored ones.",
+      "Technical example: Llama-2-7B has 32 layers, 32 heads and head size 128, in FP16. Per token it stores 2 (key and value) x 32 x 4096 x 2 bytes, which is about 0.5 MB.",
+      "A 4,000-token chat then uses about 2 GB of cache for one user. Thirty users use 60 GB, more than four times the 14 GB of weights.",
+      "Only keys and values are cached. Queries are used once and then dropped."
+    ],
+    "inside": [
+      "Stored: for each layer, a key tensor and a value tensor for every token so far, usually per attention head.",
+      "Compared: the new query against all stored keys, to produce attention weights.",
+      "Updated: at each step, one new key and value per layer are appended. Nothing old is edited.",
+      "Size formula: 2 x layers x KV heads x head size x tokens x batch x bytes per number.",
+      "During prefill the cache is filled in one pass for the whole prompt. During decode it grows by one entry per layer per step."
+    ],
+    "matters": [
+      "The cache sets the limit on batch size and context length. This is why many serving fixes target it.",
+      "Fixes include fewer KV heads (GQA), paged storage (PagedAttention), lower precision for the cache, and prefix sharing.",
+      "A stored cache for a shared system prompt can be reused across users to cut TTFT."
+    ],
+    "watch": [
+      "Do not use the cache in training. Training processes the full sequence in parallel and does not need it.",
+      "Do not say the cache stores queries. It stores keys and values only.",
+      "Do not forget the cache when you size GPUs. Weights alone understate the need.",
+      "Do not assume the cache is free to keep. A long idle chat holds memory that other users could use."
+    ]
+  },
+  "11": {
+    "short": [
+      "PagedAttention stores the KV cache in small fixed-size blocks that need not sit next to each other in memory. It works like virtual memory in an operating system. A table maps each request's logical blocks to physical blocks.",
+      "This removes wasted space, so the server fits more requests at once and gains throughput."
+    ],
+    "picture": [
+      "Real example: a chat service gets many requests. Some users send two words and get a short reply. Others paste a long report. The server cannot know the final length in advance.",
+      "Naive servers reserve one big contiguous slab per request, sized for the maximum length. Most of the slab stays empty.",
+      "Technical example: a 7B model needs about 0.5 MB per token. A request reserves 4,096 tokens, which is 2 GB. If it only uses 300 tokens, about 150 MB is used and about 1.85 GB is wasted.",
+      "Measured waste in older systems was often 60 to 80 percent of KV memory. This was due to reserved space, gaps between slabs, and size rounding.",
+      "vLLM cuts the cache into blocks of, for example, 16 tokens. For this 7B model a block is about 8 MB.",
+      "A block is given to a request only when the request needs it. Blocks can sit anywhere in GPU memory.",
+      "A block table per request lists which physical block holds each group of 16 tokens.",
+      "Waste per request is at most one half-filled block, less than 16 tokens, instead of thousands.",
+      "Reported gains are about 2 to 4 times higher throughput than earlier servers at the same latency."
+    ],
+    "inside": [
+      "Stored: a pool of equal-size physical blocks on the GPU, plus a block table in the scheduler for each request.",
+      "The attention kernel follows the table. It reads keys and values block by block instead of from one slab.",
+      "Updated: when a request fills its last block, the allocator hands it a free block and adds a table entry. When it ends, all its blocks return to the pool.",
+      "Sharing: requests with the same prefix, such as one system prompt, point to the same blocks. Copy-on-write makes a private copy only when one request must change a shared block.",
+      "Beam search and parallel sampling also use sharing. Branches share the prompt blocks."
+    ],
+    "matters": [
+      "More free memory means more concurrent requests, so lower cost per token.",
+      "Prefix sharing cuts TTFT for repeated prompts, such as a long policy or tool list.",
+      "It makes continuous batching practical, because requests of different lengths join and leave without moving memory."
+    ],
+    "watch": [
+      "Do not say PagedAttention speeds up one request. It improves memory use, which raises batch size and throughput.",
+      "Do not confuse it with FlashAttention. One manages cache storage. The other reduces memory traffic inside the attention math.",
+      "Do not ignore block size. Very small blocks raise table overhead. Very large blocks bring waste back.",
+      "Do not forget that the kernel must support the table. Plain attention kernels cannot read paged blocks."
+    ]
+  },
+  "12": {
+    "short": [
+      "Continuous batching lets the server add new requests and remove finished ones at every decode step. This keeps the GPU busy. It replaces the old method of waiting for the whole batch to finish.",
+      "It is one of the biggest levers for lowering the cost per token in LLM serving."
+    ],
+    "picture": [
+      "Real example: a bank's support bot gets a steady flow of questions. Some answers are 20 tokens long. Others are 400 tokens. Users arrive at random times.",
+      "Static batching starts a fixed group together. The group ends only when the longest answer ends. Slots of short answers sit idle.",
+      "Technical example: a batch of 8 starts. Seven requests finish after 50 tokens. One needs 500 tokens. For 450 more steps, seven of eight slots do nothing, so the GPU uses about 12 percent of its slots.",
+      "Continuous batching, also called in-flight batching, schedules at every step. The moment a request emits its end token, its slot goes to a waiting request.",
+      "New requests need a prefill pass first. Engines can mix prefill chunks with ongoing decode steps in the same iteration.",
+      "Decode is memory-bound. One read of the weights serves every request in the batch. So extra requests add almost no time per step until compute becomes the limit.",
+      "Throughput can rise several times against static batching. Exact gains depend on length mix and load.",
+      "Late requests no longer wait for a whole batch to end. Their queue time drops."
+    ],
+    "inside": [
+      "The scheduler loop runs once per decode step. It checks which requests finished, frees their cache blocks, and admits waiting requests if memory allows.",
+      "Each step builds a batch of tokens from many requests. Each request has its own length and its own cache position.",
+      "A flexible cache is needed, because requests join and leave at different lengths. PagedAttention solves this.",
+      "Policies decide who goes first: first come first served, priority, or shortest job. If memory runs out, the engine can pause a request and swap or drop its cache.",
+      "Chunked prefill limits how many prompt tokens enter one step, so long prompts do not stall decoding for others."
+    ],
+    "matters": [
+      "GPU time is the main cost of serving. Higher utilization cuts the bill directly.",
+      "It improves fairness. Short requests are not trapped behind long ones.",
+      "Common engines such as vLLM, TGI and TensorRT-LLM use it, so it is expected knowledge."
+    ],
+    "watch": [
+      "Do not confuse it with dynamic batching. Dynamic batching waits a few milliseconds to group requests, then runs the whole forward pass for the group.",
+      "Do not assume a bigger batch always wins. Past the compute limit, each user gets slower.",
+      "Do not forget memory limits. Admitting too many requests can exhaust the KV cache.",
+      "Do not skip the tail latency check. Heavy load can push p99 up even while average throughput looks good."
+    ]
+  },
+  "13": {
+    "short": [
+      "Quantization stores numbers in fewer bits, such as INT8 or INT4 instead of FP16. This cuts memory and speeds up memory-bound inference, with a small loss in accuracy.",
+      "Each stored number is a small integer plus a scale that maps it back to a real value."
+    ],
+    "picture": [
+      "Real example: a startup wants to run a 70B model for a document assistant. In FP16 the weights need 140 GB, which is two or more big GPUs. In INT4 they need about 35 GB plus scales, which fits one 48 GB or 80 GB GPU.",
+      "An FP16 number takes 2 bytes. INT8 takes 1 byte. INT4 takes half a byte.",
+      "The idea: find the range of a group of weights, split that range into a small grid, and store each weight as the nearest grid point. Rounding adds a small error.",
+      "Technical example: weights range from minus 0.8 to 0.8. With INT8 symmetric, the scale is 0.8 divided by 127, about 0.0063. A weight of 0.5 is stored as 79 and read back as about 0.4977.",
+      "With INT4 the scale is 0.8 divided by 7, about 0.114. The same 0.5 is stored as 4 and read back as 0.457. The error is bigger.",
+      "PTQ, post-training quantization, converts a finished model. A small calibration set of a few hundred samples helps choose ranges. Examples: GPTQ, AWQ.",
+      "QAT, quantization-aware training, simulates rounding during training, so the model learns to cope. It gives better results at very low bits but costs training time.",
+      "Weight-only quantization (for example 4-bit weights with 16-bit math) saves memory and bandwidth. It helps decode most.",
+      "Weight-and-activation quantization (INT8 for both) can use fast integer math units. It helps prefill and throughput, but activations have outliers that make it harder."
+    ],
+    "inside": [
+      "Stored: the integer codes, plus a scale per group, and sometimes a zero-point, which is an offset for asymmetric ranges.",
+      "Compared: calibration runs real inputs and records value ranges, so the scale fits real traffic.",
+      "At run time, a kernel reads the small integers, multiplies by the scale (dequantizes), and does the math, often in FP16.",
+      "Granularity: one scale per tensor is cheap but coarse. One per channel is better. One per group of, say, 128 weights is common for 4-bit. The extra cost is about 0.125 bit per weight.",
+      "Outliers: one huge value stretches the range, so all other values use fewer grid steps. Methods like AWQ and SmoothQuant protect or rescale the important channels.",
+      "Symmetric formula: scale equals max absolute value divided by $2^{b-1}-1$. The worst rounding error per weight is half a scale."
+    ],
+    "matters": [
+      "It decides whether a model fits on your hardware at all.",
+      "Decode is limited by memory reads, so fewer bytes per weight give more tokens per second.",
+      "It also frees memory for KV cache, which allows more users per GPU."
+    ],
+    "watch": [
+      "Do not say INT4 makes math four times faster. Weight-only INT4 mainly saves memory bandwidth. Math is often still FP16.",
+      "Do not use calibration data that differs from real traffic. Ranges will be wrong for your domain.",
+      "Do not skip evaluation after quantizing. Measure task accuracy and perplexity, and check rare cases like numbers and code.",
+      "Do not forget the scales. Real size is a little above the pure bit count."
+    ]
+  },
+  "14": {
+    "short": [
+      "Multi-head attention gives every query head its own key and value head. Multi-query attention (MQA) lets all query heads share one key-value head. Grouped-query attention (GQA) sits between them: groups of query heads share one key-value head.",
+      "Fewer key-value heads mean a smaller KV cache and faster decode. Multi-head latent attention (MLA) goes further by storing a compressed vector instead."
+    ],
+    "picture": [
+      "Real example: a company serves a chat model to 500 users at once. The KV cache, not the weights, fills the GPU. A model with GQA fits several times more users in the same memory.",
+      "In standard multi-head attention (MHA) with 32 heads, there are 32 query heads, 32 key heads and 32 value heads.",
+      "MQA keeps 32 query heads but only one key head and one value head. The cache shrinks 32 times. Some quality loss appears.",
+      "GQA keeps 32 query heads and, for example, 8 key-value heads. Each group of 4 query heads shares one pair. The cache shrinks 4 times with quality close to MHA.",
+      "Technical example: Llama-3-8B has 32 layers, 8 key-value heads and head size 128. Per token it stores 2 x 32 x 8 x 128 x 2 bytes, which is 128 KB. A full-head version would need 512 KB. At 8,000 tokens the cache is 1 GB instead of 4 GB.",
+      "Llama-2-70B and many other recent models use GQA. Mistral and Qwen families also use it.",
+      "MLA, used in DeepSeek models, compresses keys and values of each token into one small latent vector. The model stores that vector and expands it when needed. The DeepSeek-V2 paper reports a cache cut of more than 90 percent.",
+      "Queries still differ per head. That is why quality stays close to the full version."
+    ],
+    "inside": [
+      "What changes: the number of key and value projection matrices. Query projections stay the same.",
+      "In GQA each query head looks up the key-value head of its group. The same stored keys and values are read by several query heads.",
+      "The saved memory is in the cache and in the memory traffic per decode step. Less data is read per token.",
+      "Models are often trained with GQA from the start. Converting an MHA model afterward is possible by averaging heads and doing a short extra training.",
+      "MLA stores a latent vector. At attention time the model projects it back to keys and values, or folds the projection into the query math to avoid the expansion."
+    ],
+    "matters": [
+      "Decode speed depends on memory reads. Smaller cache means faster steps.",
+      "More context or more users fit on one GPU.",
+      "Quality loss is small, so this is a cheap win. That is why most new open models use GQA."
+    ],
+    "watch": [
+      "Do not say GQA reduces query heads or model width. It reduces only key-value heads.",
+      "Do not think MQA and GQA change the weights memory much. Savings are mostly in the cache.",
+      "Do not forget the quality side of MQA. One shared head can hurt accuracy on hard tasks.",
+      "Do not mix the acronyms with other terms. Grid, greedy and gradient checkpointing are different things from GQA."
+    ]
+  },
+  "15": {
+    "short": [
+      "FlashAttention computes exact attention in small tiles inside the fast on-chip memory of the GPU. It never writes the full score matrix to slow memory. The result is the same as normal attention, but with much less memory traffic.",
+      "The bottleneck in attention is moving data, not multiplying numbers."
+    ],
+    "picture": [
+      "Real example: a team trains a model on 8,000-token contracts. Normal attention runs out of memory. With FlashAttention the same job fits and runs faster.",
+      "A GPU has HBM, a large but slower main memory, and SRAM, a tiny but very fast memory on the chip. Reads and writes to HBM often cost more time than the math.",
+      "Normal attention builds the full score matrix, one score for every pair of tokens. It writes it to HBM, reads it back for softmax, writes the result, then reads it again to mix the values.",
+      "Technical example: for 8,192 tokens the score matrix has about 67 million entries per head. In FP16 that is about 134 MB per head per layer. With 32 heads it is about 4.3 GB per layer for one sequence.",
+      "FlashAttention splits queries, keys and values into tiles that fit in SRAM. It loads a tile, computes scores, applies softmax, mixes values, and then moves to the next tile.",
+      "The problem is that softmax needs the sum over all scores in a row. Tiles see only part. The fix is online softmax.",
+      "Online softmax keeps a running maximum and a running sum for each row. When a new tile has a larger maximum, the old partial results are rescaled.",
+      "All steps are fused into one kernel, so intermediate results stay in SRAM.",
+      "Memory use for attention falls from the square of the length to linear in the length."
+    ],
+    "inside": [
+      "Moves: tiles of Q, K and V go from HBM to SRAM. Only the final output goes back to HBM, plus small per-row statistics.",
+      "Stored: per row, a running maximum and a running sum. These are tiny.",
+      "Compared: each query tile is compared with each key tile, one pair at a time.",
+      "Updated: the output tile is rescaled and added to when a new key tile arrives, so it ends exact.",
+      "Backward pass: the score matrix is not saved. It is recomputed tile by tile from stored statistics. Extra math is cheaper than extra memory traffic.",
+      "FlashAttention is exact. It is not sparse and not approximate."
+    ],
+    "matters": [
+      "It makes long context affordable in training and in prefill.",
+      "Reported speed gains are about 2 to 4 times for long sequences.",
+      "It is default in modern stacks, so you will meet it in every serious setup."
+    ],
+    "watch": [
+      "Do not call it approximate attention. The output equals standard attention up to normal rounding.",
+      "Do not expect it to fix decode. Decode is limited by KV cache reads, which needs other tools such as PagedAttention and split-key decoding.",
+      "Do not forget that the number of math operations stays roughly the same. The win is fewer memory reads and writes.",
+      "Do not confuse it with PagedAttention. They solve different problems and work together."
+    ]
+  },
+  "16": {
+    "short": [
+      "Gradient checkpointing saves only some activations during the forward pass and recomputes the others during the backward pass. It trades extra compute for lower memory.",
+      "It applies to training only."
+    ],
+    "picture": [
+      "Real example: a hospital team fine-tunes a model on long clinical notes of 8,000 tokens. The job runs out of GPU memory at batch size 1. With checkpointing it fits, and they train slower but successfully.",
+      "Backpropagation needs the activations of each layer from the forward pass. These are the middle results.",
+      "Normally the framework keeps all of them until the backward pass uses them. For long sequences and many layers, they take more memory than the weights.",
+      "With checkpointing, the framework saves the input of only some blocks, for example each transformer block's input.",
+      "During the backward pass, when it needs the missing activations of a block, it re-runs the forward pass of that block from the saved input.",
+      "Technical example: a 32-layer model stores 32 block inputs instead of all internal results of every layer. Activation memory drops by a large factor, often 3 to 10 times depending on settings.",
+      "The price is about one extra forward pass. Backward costs about twice a forward pass, so one step goes from about 3 units of work to about 4. That is roughly 25 to 35 percent slower.",
+      "With the square-root rule, n layers with about the square root of n checkpoints use memory proportional to the square root of n.",
+      "Result: you can use longer sequences or larger batches on the same GPU."
+    ],
+    "inside": [
+      "Stored: only checkpoint tensors. Everything else inside a block is thrown away after the forward pass.",
+      "Recomputed: the forward math of each block, right before its backward step.",
+      "Updated: gradients come out the same as without checkpointing, up to rounding. Randomness such as dropout must replay with the same random state to match.",
+      "Weights, gradients and optimizer states are not affected. They still use their full memory.",
+      "Choice of checkpoint points sets the balance. More checkpoints use more memory and less recompute."
+    ],
+    "matters": [
+      "It is the first fix to try when training hits out-of-memory with long inputs.",
+      "It is standard in fine-tuning recipes with LoRA and QLoRA.",
+      "It lets small teams train on a single GPU what would need several."
+    ],
+    "watch": [
+      "Do not apply it to inference. There is no backward pass, so there is nothing to save.",
+      "Do not expect it to cut weight or optimizer memory. Only activations shrink.",
+      "Do not forget the speed cost. Training takes roughly a third longer.",
+      "Do not forget the dropout replay. If random state is not restored, gradients become wrong."
+    ]
+  },
+  "17": {
+    "short": [
+      "Speculative decoding uses a small, fast draft model to guess several next tokens. The large model then checks all the guesses in one parallel pass. It keeps the correct ones and fixes the first wrong one.",
+      "The output has the same distribution as the large model alone. Only the speed changes."
+    ],
+    "picture": [
+      "Real example: a code assistant writes boilerplate such as imports and function headers. Many of those tokens are easy to guess. A small model guesses them cheaply and the big model confirms them in bulk.",
+      "Plain decode is slow because the big model makes one token per expensive step, and each step reads all its weights.",
+      "A draft model, perhaps 10 to 20 times smaller, generates k tokens one by one. Each draft step is cheap.",
+      "The big model then runs once over the prompt plus the k drafted tokens. This looks like prefill, so it is parallel and costs about the same as one normal step.",
+      "At each drafted position, the big model gives its own probability. The system compares it with the draft's probability.",
+      "Accepted tokens stay. At the first rejected token, the system samples a replacement from the big model's adjusted distribution and drops the rest of the draft.",
+      "Technical example: k equals 4 and each guess is accepted with chance 0.8. Expected tokens per big-model pass are about (1 minus 0.8 to the fifth) divided by 0.2, which is about 3.4.",
+      "After the cost of draft steps, the real speed-up is often 2 to 3 times.",
+      "Variants: a separate draft model, extra prediction heads on the big model (Medusa, EAGLE), and prompt lookup, which copies phrases from the prompt."
+    ],
+    "inside": [
+      "Stored: caches for both models. The big model's cache must roll back for rejected tokens.",
+      "Compared: for each drafted token, the ratio of big-model probability to draft probability decides acceptance. If the big model likes it at least as much, accept it. Otherwise accept with chance equal to the ratio.",
+      "This rejection rule is what keeps the final distribution exactly equal to the big model's.",
+      "Decode is memory-bound, so checking k tokens costs almost the same as checking one. That is why the trick works.",
+      "Acceptance rate depends on how well the draft matches the big model. Same model family and similar training data help."
+    ],
+    "matters": [
+      "It lowers latency for single users without hurting quality. This suits chat and code tools.",
+      "It needs no retraining of the big model in the draft-model version.",
+      "It works best at low load, where the GPU has free compute. At high load the free compute is gone."
+    ],
+    "watch": [
+      "Do not confuse it with distillation. The big model still runs at every step.",
+      "Do not use a weak draft model. Low acceptance wastes work and can make decoding slower.",
+      "Do not forget the memory cost. You must hold a second model or extra heads.",
+      "Do not claim it changes the output quality. With correct rejection sampling it does not."
+    ]
+  },
+  "18": {
+    "short": [
+      "Distillation trains a small student model to copy a large teacher model. The student learns from the teacher's full output probabilities, not only from the right answer.",
+      "It gives a faster and cheaper model that keeps most of the teacher's quality."
+    ],
+    "picture": [
+      "Real example: a bank uses a large model to classify support emails into 40 categories. It is accurate but slow and costly. The team trains a small model on the large model's outputs and runs that in production.",
+      "A normal label says only: this image is a cat. A teacher's soft label says: 70 percent cat, 25 percent dog, 5 percent car.",
+      "The soft label carries dark knowledge. It tells the student that cats look more like dogs than like cars.",
+      "A temperature above 1 softens the teacher's distribution, so small probabilities become easier to see and learn from.",
+      "The student's loss mixes two parts: how far its softened output is from the teacher's, and the normal loss on true labels.",
+      "Technical example: DistilBERT is about 40 percent smaller and about 60 percent faster than BERT, and keeps about 97 percent of its language-understanding score.",
+      "For LLMs, a common method is sequence-level distillation. The teacher writes answers or reasoning steps for many prompts, then the student is fine-tuned on that text.",
+      "A second LLM method matches the teacher's token probabilities at each position, which gives richer signal than text alone.",
+      "The student can have a different and smaller architecture than the teacher."
+    ],
+    "inside": [
+      "Stored: teacher outputs, either live or saved offline for each training example.",
+      "Compared: student distribution against teacher distribution, using KL divergence, a measure of how different two distributions are.",
+      "Updated: only the student's weights. The teacher is frozen.",
+      "Formula: loss equals alpha times $T^2$ times KL of softened outputs, plus (1 minus alpha) times cross-entropy on true labels. The $T^2$ factor keeps gradient size stable when T changes.",
+      "Data matters. The student only learns the behavior shown in the prompts you give the teacher."
+    ],
+    "matters": [
+      "It cuts serving cost and latency, and it makes edge and on-device use possible.",
+      "It can pass reasoning style from a strong model to a small one.",
+      "It is a clear alternative when quantization alone does not shrink the model enough."
+    ],
+    "watch": [
+      "Do not confuse it with quantization. Distillation builds a new smaller model. Quantization keeps the same model with fewer bits.",
+      "Do not expect the student to beat the teacher on hard tasks. It usually trails on rare cases.",
+      "Do not forget license limits. Some providers forbid using their outputs to train competing models.",
+      "Do not train on teacher mistakes without filtering. The student copies errors too."
+    ]
+  },
+  "19": {
+    "short": [
+      "Pretraining teaches a model language and world knowledge from raw text. Supervised fine-tuning (SFT) teaches it to follow instructions from example answers. RLHF and DPO then adjust the model toward answers people prefer.",
+      "Each stage uses a different data type and a different loss, and each answers a different need."
+    ],
+    "picture": [
+      "Real example: an insurance company wants a claims assistant. Pretraining gives general language. SFT teaches the company's reply format and tool calls. Preference tuning teaches the model to prefer polite, safe and clear answers.",
+      "Pretraining: predict the next token over trillions of raw tokens. It builds grammar and facts. It is the most expensive stage and runs on thousands of GPUs.",
+      "Continued pretraining: more next-token training on domain text such as legal, medical or telecom documents. It adds vocabulary and knowledge.",
+      "SFT: train on pairs of instruction and ideal answer. The loss counts only the answer tokens, not the prompt tokens.",
+      "Technical example: a typical SFT set has 10,000 to 100,000 good examples. Pretraining uses billions of times more tokens.",
+      "RLHF, reinforcement learning from human feedback: people rank pairs of answers. A reward model learns to predict the ranking. The LLM is then optimized with PPO, a reinforcement learning method, to raise reward.",
+      "A KL penalty keeps the tuned model close to the SFT model. Without it the model finds odd answers that fool the reward model.",
+      "DPO, direct preference optimization, skips the reward model. For each pair it raises the probability of the chosen answer and lowers that of the rejected one, relative to a frozen reference copy.",
+      "DPO is simpler and more stable than PPO. It needs a preference dataset and two copies of the model in memory."
+    ],
+    "inside": [
+      "Pretraining loss: negative log-probability of each true next token, averaged over the text.",
+      "SFT loss: the same loss, masked so that only response tokens count.",
+      "Reward model: usually the LLM with a scalar output head, trained so the chosen answer scores above the rejected one.",
+      "DPO compares log-probability ratios between the current model and the reference for the chosen and rejected answers. A scale beta controls how far the model may move from the reference.",
+      "Order in practice: pretrain, optional continued pretrain, SFT, then preference tuning.",
+      "Facts that change often belong in retrieval, not in weights."
+    ],
+    "matters": [
+      "The stage you pick decides cost, data need and risk. SFT with LoRA is cheap. Pretraining is not.",
+      "SFT changes behavior and format well. Preference tuning changes tone, safety and ranking of good answers.",
+      "Many teams use SFT for behavior and RAG for facts, which is a common interview answer."
+    ],
+    "watch": [
+      "Do not use SFT to inject changing facts. The model learns style faster than knowledge, and facts go stale. Use RAG.",
+      "Do not over-train on narrow data. The model can forget general skills. This is catastrophic forgetting.",
+      "Do not forget the KL leash in RLHF. Without it, the model learns to exploit the reward model.",
+      "Do not say DPO needs no data. It needs good preference pairs, and noisy pairs hurt."
+    ]
+  },
+  "20": {
+    "short": [
+      "LoRA freezes the original weights and trains two small matrices whose product is added to each chosen weight. Only the small matrices are trained and saved.",
+      "This cuts trainable parameters and optimizer memory by a large factor. It lets you tune a big model on one GPU."
+    ],
+    "picture": [
+      "Real example: a company serves 50 customers with one base model. Each customer needs its own tone and format. The team trains one small LoRA adapter per customer and swaps adapters at request time.",
+      "Full fine-tuning updates every number in every weight matrix. For a 7B model that means 7 billion trainable values and a very large optimizer state.",
+      "LoRA assumes that the change needed for a new task is simple. It lives in a few directions, a low-rank space.",
+      "The update is written as the product of two thin matrices, B and A, with a small inner size r called the rank. Typical r is 4 to 64.",
+      "A starts with random values. B starts at zero. So the product is zero, and at step 0 the model equals the base model.",
+      "Technical example: one weight matrix is 4,096 by 4,096, which has about 16.8 million numbers. With r equal to 8, A and B hold 8 x (4,096 + 4,096) which is 65,536 numbers. That is about 0.4 percent.",
+      "For a 7B model with r equal to 16 on query and value projections, the adapter has about 8 million values. In FP16 the file is about 17 MB, versus about 14 GB for the model.",
+      "LoRA is usually applied to attention projections, and often to the feed-forward layers too.",
+      "After training you can merge: add the product into the base weight. Then there is no extra delay at inference. Or keep adapters apart and swap them."
+    ],
+    "inside": [
+      "Frozen: all base weights. No gradients and no optimizer values are kept for them.",
+      "Trained: A and B in each adapted layer. Gradients and Adam values exist only for these.",
+      "Forward pass: output equals base weight times input, plus (alpha divided by r) times B times A times input. Formula: $h = W_0 x + (\\alpha / r) B A x$.",
+      "Alpha is a scale. Dividing by r keeps the update size similar when you change r.",
+      "Memory saved: gradients and optimizer states for the base model. Activations are still needed, so gradient checkpointing still helps.",
+      "QLoRA goes one step further. It stores the frozen base in 4-bit and trains LoRA adapters in higher precision. A 7B base then needs about 4 GB."
+    ],
+    "matters": [
+      "A single consumer or mid-range GPU can fine-tune a 7B model.",
+      "Small adapter files are easy to store, version and ship per customer.",
+      "One base model can serve many adapters, which saves GPU memory."
+    ],
+    "watch": [
+      "Do not say LoRA shrinks the base model memory. It does not. QLoRA does that by quantizing the base.",
+      "Do not set r too small or pick too few target layers. The model underfits.",
+      "Do not forget alpha when you change r. Learning behavior shifts.",
+      "Do not expect LoRA to add many new facts. It is best for behavior, format and style."
+    ]
+  }
+}

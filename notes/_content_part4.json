@@ -1,0 +1,804 @@
+{
+  "63": {
+    "short": [
+      "The four learning types differ in where the learning signal comes from.",
+      "Supervised learning uses labels that people wrote, unsupervised learning has none, self-supervised learning builds labels from the data, and reinforcement learning (RL) uses rewards.",
+      "An LLM uses three of them in order: self-supervised pretraining, supervised instruction tuning, and RL from human feedback."
+    ],
+    "picture": [
+      "Supervised: a bank has 200,000 past loans. Each loan has a label: repaid or defaulted. The model learns the map from loan features to that label.",
+      "Unsupervised: a shop has 100,000 customers and no labels. K-means groups them into 4 segments by spend and visit rate. A person then names the segments.",
+      "Semi-supervised: a team has 1,000 labeled invoices and 500,000 unlabeled ones. The model learns structure from all of them and uses the 1,000 labels to name the classes.",
+      "Self-supervised: take the sentence 'The cat sat on the mat'. Hide the last word. Ask the model to predict 'mat'. The text itself is the label. No human wrote it.",
+      "Self-supervised at scale: GPT-style pretraining runs this next-token task on trillions of tokens. Each token position gives one free training example.",
+      "Contrastive self-supervision: CLIP trains on about 400 million image and caption pairs. It pulls matching pairs close in embedding space. It pushes non-matching pairs apart.",
+      "RL: a robot or a game agent acts. The environment returns a reward, such as +1 for a win. The agent learns a policy, which is a rule for choosing actions.",
+      "RL in LLMs: the model writes two answers. A person picks the better one. A reward model learns that preference. PPO then updates the LLM to raise the reward."
+    ],
+    "inside": [
+      "Supervised loss compares a prediction with a known label. For classification, the loss is cross-entropy. For regression, the loss is mean squared error. Gradient descent lowers the loss.",
+      "Unsupervised methods optimize a built-in goal. K-means lowers the squared distance to the cluster centers. PCA keeps the directions with most variance. No label enters the loss.",
+      "Self-supervised learning is supervised learning with automatic labels. The loss is still cross-entropy. Only the source of the label differs. Masked language models (BERT) hide about 15% of tokens and predict them.",
+      "RL differs in one key way: the data depends on the agent. A different policy produces different states and rewards. So the data distribution moves during training. This makes RL less stable than supervised learning.",
+      "RL goal: maximize the expected sum of discounted rewards. A discount factor gamma, such as 0.99, makes near rewards count more than far rewards.",
+      "Reward credit assignment is hard. If a chess game gives one reward after 80 moves, the agent must work out which moves caused the win. Value functions and advantage estimates help with this."
+    ],
+    "matters": [
+      "Interviewers ask this to test if you can pick the right setup for a problem. Fraud with labeled history is supervised. Customer grouping with no labels is unsupervised.",
+      "The LLM lifecycle question is common. Name all three stages and the loss or signal for each. This shows you understand how a chat model is built.",
+      "Label cost drives real decisions. If one expert label costs 2 dollars and you need 100,000, that is 200,000 dollars. Self-supervised pretraining removes most of that cost.",
+      "RL fits problems with delayed outcomes and no single right answer, such as ranking, bidding, and robot control."
+    ],
+    "watch": [
+      "Do not call LLM pretraining 'unsupervised'. The precise term is 'self-supervised'. The data gives its own labels.",
+      "Do not use RL when supervised learning works. RL needs far more samples and is harder to debug. Use it only when the signal is a delayed reward.",
+      "Reward hacking: the agent finds a way to get high reward without doing the task. A reward model can reward long, confident answers that are wrong. Add KL penalties and human checks.",
+      "Weak labels are not free. If 10% of supervised labels are wrong, the model learns that noise. Check label quality before you tune the model."
+    ]
+  },
+  "64": {
+    "short": [
+      "Linear regression predicts a number as a weighted sum of input features plus a bias.",
+      "It finds the weights that make the mean squared error smallest.",
+      "It is the base model for regression tasks and the core of every linear layer in a neural network."
+    ],
+    "picture": [
+      "House price: price = 50,000 + 3,000 x (square meters) + 8,000 x (bedrooms). Each weight says how much the price moves when that feature rises by one unit.",
+      "Draw 100 houses as dots on a plot of size against price. The best line is the one where the squared vertical gaps from dots to the line add up to the smallest value.",
+      "A residual is the gap between the real value and the predicted value. If the real price is 300,000 and the model says 280,000, the residual is 20,000.",
+      "Squaring makes big misses count more. One miss of 100 costs 10,000. Ten misses of 10 cost only 1,000 in total. So one outlier can pull the line toward it.",
+      "Matrix view: X has one row per house and one column per feature. The prediction vector is the shadow of the true price vector on the space the columns of X span.",
+      "Polynomial regression still counts as linear regression. You add columns x squared and x cubed. The model stays linear in the weights, but the curve bends.",
+      "R squared tells how much variance the model explains. A value of 0.80 means the model explains 80% of the spread in price. A value of 0 means it does no better than the mean."
+    ],
+    "inside": [
+      "Model: y-hat = Xw + b. Loss: L = (1/N) x sum of (y - y-hat) squared. We want the weights that make L smallest.",
+      "Closed form: w = (X^T X)^-1 X^T y. This is the normal equation. Inverting a d x d matrix costs about d cubed operations. For 10,000 features that is about 10^12 operations, which is slow.",
+      "Gradient descent avoids the inverse. The gradient of L is (2/N) x X^T (Xw - y). Each step is w = w - learning rate x gradient. It scales to millions of rows and works with mini-batches.",
+      "The loss for linear regression is a convex bowl. It has one minimum. Gradient descent with a good step size always reaches it.",
+      "Multicollinearity: two columns carry almost the same information, such as size in square feet and size in square meters. X^T X becomes nearly singular. The weights become huge and cancel each other, for example +1000 and -998.",
+      "Assumptions behind the standard error bars: linear relation, independent errors, constant error variance, and errors close to normal. The predictions still work if these fail a little. The confidence intervals do not."
+    ],
+    "matters": [
+      "It is the first baseline to build. If a gradient boosting model beats it by only 1%, the extra complexity may not be worth it.",
+      "Weights are easy to explain. A business user can read 'each extra bedroom adds 8,000'. That helps in finance and healthcare reviews.",
+      "A neural network layer computes Wx + b. If you know linear regression, you know the core of every dense layer.",
+      "Interviewers use it to test the full chain: model, loss, closed form, gradient, assumptions, and what breaks."
+    ],
+    "watch": [
+      "Outliers dominate MSE. If data has bad sensor spikes, use MAE or Huber loss, or clean the data first.",
+      "Correlated features make the weights unstable. Use ridge regression or drop one feature.",
+      "Do not read a weight as cause. A weight of +8,000 for bedrooms may only mean that bigger houses have more bedrooms.",
+      "Extrapolation is risky. A line trained on houses of 50 to 200 square meters can give nonsense for 1,000 square meters."
+    ]
+  },
+  "65": {
+    "short": [
+      "Logistic regression is a classifier that computes a linear score and passes it through a sigmoid to get a probability.",
+      "It trains with binary cross-entropy loss.",
+      "It gives a straight-line decision boundary."
+    ],
+    "picture": [
+      "Spam filter: the model adds up evidence. The word 'prize' adds +2.1. A known sender adds -1.5. The total score z is 0.6. The sigmoid turns 0.6 into a probability of 0.65.",
+      "Sigmoid values to remember: z = 0 gives 0.5. z = 2 gives 0.88. z = -2 gives 0.12. z = 5 gives 0.993. The curve is flat at both ends.",
+      "Odds view: probability 0.8 equals odds of 4 to 1. The log of the odds is 1.39. Logistic regression says the log-odds equal a linear sum of features.",
+      "A weight of 0.7 on a feature means the odds multiply by e^0.7, which is about 2.0, for each +1 in that feature. This is why people call the weights interpretable.",
+      "In 2D, the decision boundary is a straight line where the score is 0. Points on one side get class 1. Points on the other side get class 0.",
+      "Loan default: a model gives a 0.12 default chance. The bank can approve at a threshold of 0.20 and decline above it. The threshold is a business choice, not a model choice.",
+      "Multi-class: use one score per class and apply softmax. This is called softmax regression. It is the same math as the output layer of an LLM."
+    ],
+    "inside": [
+      "Model: p = sigmoid(w.x + b), where sigmoid(z) = 1 / (1 + e^-z). The output is the probability of class 1.",
+      "Loss for one example: -[y log p + (1 - y) log (1 - p)]. If y = 1 and p = 0.9, the loss is 0.105. If y = 1 and p = 0.1, the loss is 2.30. Confident wrong answers cost a lot.",
+      "Gradient of the loss with respect to w is (p - y) x. That is the prediction error times the input. The formula is simple because sigmoid and cross-entropy cancel each other's messy terms.",
+      "The loss is convex. There is one global minimum. Mean squared error with sigmoid is not convex and trains slowly when the sigmoid is flat. This is why we use cross-entropy.",
+      "Perfectly separable data breaks training. The weights grow without limit because a larger weight always lowers the loss. L2 regularization stops this by penalizing large weights.",
+      "Training uses gradient descent, or Newton-type solvers such as L-BFGS. Each pass costs O(N x d)."
+    ],
+    "matters": [
+      "It is a strong, fast, explainable baseline for tabular classification. Banks and insurers often must explain a decision, and this model allows that.",
+      "It outputs a probability. You can check calibration: of all cases scored 0.7, do about 70% turn out positive?",
+      "It links to deep learning. The last layer of a classifier network is logistic or softmax regression on learned features.",
+      "Interviewers like the question 'why cross-entropy, not MSE, for classification'. The answer: convex loss, strong gradient on wrong answers, and it matches maximum likelihood."
+    ],
+    "watch": [
+      "The 0.5 threshold is not special. In fraud with 0.1% positives, a good threshold may be 0.02. Pick it from the precision and recall you need.",
+      "Class imbalance pushes the probabilities down. A model trained on 1% positives rarely outputs above 0.5. Use class weights or tune the threshold.",
+      "The boundary is linear. If classes form a ring, the model fails. Add features such as x squared, or use a tree model.",
+      "Unscaled features slow gradient descent and make L2 penalties unfair. Scale features first."
+    ]
+  },
+  "66": {
+    "short": [
+      "K-nearest neighbors (KNN) predicts from the k closest training points.",
+      "Classification takes a vote and regression takes an average.",
+      "KNN does no training, so all the work happens at query time."
+    ],
+    "picture": [
+      "Movie taste: to guess if you will like a film, find the 5 users most like you. If 4 of them liked it, predict yes.",
+      "Small k: with k = 1, one odd neighbor decides the answer. The boundary is jagged and follows noise. This is overfitting.",
+      "Large k: with k = N, every query gets the majority class. This is underfitting. A middle value, such as 5 to 25 chosen by cross-validation, usually works best.",
+      "Scaling trap: a customer has salary 800,000 and age 30. Another has salary 810,000 and age 60. The salary gap is 10,000 and the age gap is 30. The distance is almost all salary. Age has no effect.",
+      "Scale cost: 1 million stored points with 768 dimensions. One query by brute force needs about 768 million multiply-add operations. That is too slow for a live service with many queries per second.",
+      "Fix: approximate nearest neighbor (ANN) indexes such as HNSW or IVF. They check a small part of the data and return 95% to 99% of the true neighbors in milliseconds.",
+      "RAG retrieval is KNN. The query is embedded. The system returns the k nearest chunk embeddings. A vector database is an ANN index with filters and storage."
+    ],
+    "inside": [
+      "Training stores the data. There are no weights. Memory is O(N x d). Prediction costs O(N x d) per query for brute force.",
+      "Distance choices: Euclidean (straight line), Manhattan (sum of absolute gaps), and cosine (angle). Use cosine for text embeddings. Use Euclidean for scaled numeric features.",
+      "Weighted KNN gives closer neighbors more vote, for example weight = 1 / distance. This reduces the harm from a bad far neighbor.",
+      "KD-trees and ball trees speed up search in low dimensions, below about 20. They help little in high dimensions.",
+      "HNSW builds a layered graph. A query starts at the top layer, jumps to close nodes, and goes down. Search takes about O(log N) steps. The cost is extra memory for the graph links.",
+      "Curse of dimensionality: as the dimension grows, the nearest and farthest points get close in distance. The ratio tends toward 1. 'Nearest' then loses meaning for raw sparse features."
+    ],
+    "matters": [
+      "KNN is the simplest model that explains vector search. If you know KNN, you can explain RAG retrieval, recommenders, and duplicate detection.",
+      "It needs no training, so it suits a quick baseline or a case with few examples per class.",
+      "It adapts at once when you add data. A new product only needs a new stored point. No retraining needed.",
+      "The ANN trade-off (speed against recall) is a common system design topic."
+    ],
+    "watch": [
+      "Always scale numeric features, or use a metric that does not depend on scale. Otherwise one large-valued feature controls the result.",
+      "Do not use KNN on millions of rows with brute force. Use an ANN index and measure recall against exact search.",
+      "Ties in a vote: with 2 classes, pick an odd k. With more classes, break ties by distance.",
+      "Class imbalance: with 1% positives, the vote almost always says negative. Weight votes or use a lower vote threshold."
+    ]
+  },
+  "67": {
+    "short": [
+      "A support vector machine (SVM) finds the boundary with the widest gap, called the margin, between two classes.",
+      "Only the nearest points, called support vectors, define that boundary.",
+      "A kernel lets the SVM draw curved boundaries."
+    ],
+    "picture": [
+      "Many lines can split two groups of points. The SVM picks the line with the widest empty street between the groups.",
+      "Only the points on the edge of the street matter. If you delete any other point, the boundary stays the same. Often these support vectors are 5% to 20% of the data.",
+      "Margin width is 2 / ||w||. If w = (3, 4), then ||w|| = 5 and the margin is 0.4. A smaller w means a wider street.",
+      "Soft margin: real data overlaps. Parameter C sets the price of crossing the street. Large C means strict, with a narrow street. Small C means loose, with a wide street and more errors allowed.",
+      "Kernel idea: points on a ring cannot be split by a line. Map each point (x, y) to include x squared plus y squared. Now the ring points sit higher than the center points and a flat plane splits them.",
+      "RBF kernel: similarity falls with distance, like a bump around each support vector. A parameter gamma sets the bump width. Large gamma gives narrow bumps and overfitting.",
+      "Classic use: a spam or topic classifier on TF-IDF vectors with 100,000 sparse features and 5,000 documents. A linear SVM is fast and strong here."
+    ],
+    "inside": [
+      "Goal: minimize (1/2)||w||^2 + C x sum of slack values, with the rule y(w.x + b) >= 1 - slack for each point. Slack measures how far a point is inside the street or on the wrong side.",
+      "Hinge loss: max(0, 1 - y x f(x)). If a point is on the correct side by more than the margin, the loss is 0. Only points near or past the boundary cost anything. This is why only support vectors matter.",
+      "Dual form: the weights are w = sum of alpha_i y_i x_i, where alpha_i is nonzero only for support vectors. The prediction uses dot products between the query and support vectors.",
+      "Kernel trick: replace each dot product x.x' with a kernel K(x, x'). The model works as if in a very high dimension without building those coordinates. For RBF, K = exp(-gamma x ||x - x'||^2), which corresponds to infinite dimensions.",
+      "Cost: a kernel SVM needs the kernel matrix, which is N x N. At N = 100,000 that is 10 billion entries. Training takes between O(N^2) and O(N^3) time. Linear SVMs with SGD scale far better.",
+      "SVM outputs a signed distance to the boundary, not a probability. Platt scaling fits a sigmoid on top of that distance to give probabilities."
+    ],
+    "matters": [
+      "SVMs do well on small to medium data with many features, such as text, genomics, and small image sets.",
+      "Max-margin thinking appears elsewhere. Hinge loss and margin ideas return in ranking losses and contrastive learning.",
+      "The kernel trick is a standard theory question. Be ready to explain it in two sentences without math.",
+      "The model is robust when the number of features exceeds the number of rows."
+    ],
+    "watch": [
+      "Scale features before training. A feature with a large range controls the distance in an RBF kernel.",
+      "Kernel SVM does not scale to millions of rows. Switch to a linear SVM, or use gradient boosting.",
+      "Do not treat the SVM score as a probability. Calibrate it first if you need real probabilities.",
+      "Tune C and gamma together with cross-validation on a log grid, such as 0.01 to 100. A wrong pair gives poor results."
+    ]
+  },
+  "68": {
+    "short": [
+      "A decision tree splits data with yes or no questions on features, and each split makes the child groups purer.",
+      "A random forest trains many trees on random parts of the data and averages them.",
+      "Averaging cuts variance and keeps the low bias of deep trees."
+    ],
+    "picture": [
+      "Churn tree: 'Contract under 6 months?' If yes, ask 'Support tickets over 3?' If yes, predict churn. Each path from root to leaf is a readable rule.",
+      "Split example: a node has 100 customers, 50 churned and 50 stayed. Gini is 0.50. The question splits them into left 40 (36 churned) and right 60 (14 churned). The weighted Gini drops to 0.287. The gain is 0.213.",
+      "A deep tree can give each training row its own leaf. Training accuracy hits 100%. Test accuracy is poor. This is high variance.",
+      "Forest idea: ask 500 different trees and take the vote. Each tree sees a different random sample of rows, so each makes different mistakes. The mistakes partly cancel.",
+      "Each tree uses a bootstrap sample. This means sampling N rows with replacement. About 63.2% of unique rows appear in each sample. The other 36.8% are 'out-of-bag' and give a free validation score.",
+      "At each split, a tree looks at only a random subset of features, often the square root of the total. For 100 features, that is 10. This keeps the trees different from each other.",
+      "Tabular example: a card fraud model on 50 columns, such as amount, merchant type, hour, and distance from home. A forest handles mixed types and needs no scaling."
+    ],
+    "inside": [
+      "Training is greedy. For each feature and each possible cut point, the algorithm computes the impurity drop. It takes the best cut and repeats on each child. It stops at a max depth, a min leaf size, or when the gain is too small.",
+      "Impurity: Gini = 1 - sum of p_c squared. Entropy = -sum of p_c log2 p_c. For regression, use the variance of the target. A 50/50 node has Gini 0.5. A 90/10 node has Gini 0.18.",
+      "To find the best cut for a numeric feature, sort the values once and scan. Cost is about O(N log N) per feature per node. Cut points sit between neighbor values.",
+      "Random forest variance: for n trees with variance s^2 and pairwise correlation r, the average has variance r x s^2 + (1 - r) x s^2 / n. More trees remove the second term. Random feature subsets lower r.",
+      "Prediction for regression is the mean of leaf values across trees. For classification it is the average of class fractions, or the majority vote.",
+      "Feature importance: sum the impurity drops each feature caused, over all splits and trees. Permutation importance is more reliable. It shuffles one feature on validation data and measures the score drop."
+    ],
+    "matters": [
+      "Forests are a strong default for tabular business data such as churn, fraud, and credit risk. They need little tuning.",
+      "Trees need no scaling, handle missing values and mixed types in many libraries, and capture feature interactions on their own.",
+      "Out-of-bag error gives a quick honest estimate without a separate validation set.",
+      "The bias-variance story is clear here: one deep tree has low bias and high variance. A forest keeps the low bias and cuts the variance."
+    ],
+    "watch": [
+      "Trees cannot extrapolate. If training prices stop at 500,000, the model never predicts 600,000. Use a linear model or add trend features for time series.",
+      "Impurity-based importance favors features with many unique values, such as an ID column. Use permutation importance for a fair view.",
+      "A single tree is unstable. A small change in data can change the root split. Do not explain a business rule from one tree without checking stability.",
+      "Large forests are heavy. 500 trees of depth 20 can use gigabytes and slow low-latency serving. Limit depth or tree count."
+    ]
+  },
+  "69": {
+    "short": [
+      "Gradient boosting builds many small trees one after another.",
+      "Each new tree learns the errors that the current ensemble still makes.",
+      "XGBoost, LightGBM, and CatBoost are fast, regularized versions that often win on tabular data."
+    ],
+    "picture": [
+      "House price: the first guess is the mean price, 300,000. A house sells for 400,000. The residual is +100,000. Tree 1 learns to predict residuals like this one from features.",
+      "Learning rate 0.1: tree 1 predicts +100,000 for that house, but the model adds only 10,000. The new guess is 310,000. A small step makes each tree a gentle correction.",
+      "If every tree fits the leftover perfectly, the remaining error is 100,000 x 0.9^m after m trees. After 50 trees it is about 520. Real trees fit less well, so you need more trees.",
+      "Bagging versus boosting: a random forest trains 500 trees in parallel to cut variance. Boosting trains trees in sequence to cut bias. Boosting trees are shallow, often depth 3 to 8.",
+      "Kaggle and industry: on tables with 10,000 to 10 million rows, tuned gradient boosting beats deep learning in most public comparisons.",
+      "Click prediction: 100 million rows with 200 features. LightGBM trains in minutes on a multi-core machine by bucketing feature values into 255 bins.",
+      "Early stopping: watch the validation loss. If it does not improve for 50 rounds, stop and keep the best round. This picks the tree count automatically."
+    ],
+    "inside": [
+      "Model: F_m(x) = F_(m-1)(x) + eta x f_m(x). Here eta is the learning rate and f_m is a small tree.",
+      "Each tree fits the negative gradient of the loss with respect to the current predictions. For squared error, the negative gradient equals the residual y - F. For log loss, it is y - p, which is the error in probability.",
+      "Why 'gradient': this is gradient descent in function space. We do not update weights. We add a function that points downhill on the loss.",
+      "XGBoost uses the first and second derivative of the loss for each row. It scores a split with these sums and a penalty on leaf count and leaf weight. This gives a regularized objective and good splits.",
+      "LightGBM uses histograms. It bins each feature into at most 255 buckets, so a split search scans 255 bins, not N rows. It grows trees leaf-wise, which means it splits the leaf with the biggest gain. This is faster but can overfit on small data.",
+      "CatBoost encodes categories with ordered target statistics. It uses an order that avoids target leakage. It handles high-cardinality categories well without one-hot encoding.",
+      "Key knobs: learning rate (0.01 to 0.3), number of trees, max depth, min child weight, row subsample, column subsample, and L2 regularization."
+    ],
+    "matters": [
+      "It is the default answer for structured enterprise data before deep learning. Say it first, then justify any move to a neural network.",
+      "It handles missing values, mixed scales, and nonlinear interactions with little preprocessing.",
+      "SHAP values give per-row feature contributions. This supports review in credit and healthcare.",
+      "Inference is cheap. A model with 500 trees of depth 6 scores a row in well under a millisecond on a CPU."
+    ],
+    "watch": [
+      "Overfitting: too many trees or too deep trees fit noise. Use early stopping on a validation set, and keep a separate test set.",
+      "Leakage hurts boosting a lot. The model finds any feature that hints at the label and uses it hard. Check suspicious top features.",
+      "A low learning rate with more trees generalizes better but trains longer. Use 0.05 to 0.1 for tuning, and lower it for the final run.",
+      "Like all tree models, it cannot extrapolate beyond the training range. Do not use it alone for strong trends."
+    ]
+  },
+  "70": {
+    "short": [
+      "Ridge, lasso, and elastic net add a penalty on weight size to a regression loss.",
+      "Ridge (L2) shrinks all weights smoothly, and lasso (L1) pushes some weights to exactly zero.",
+      "Elastic net mixes the two."
+    ],
+    "picture": [
+      "Think of a budget for weights. A model with a small budget cannot use huge weights. It must stay simple, so it overfits less.",
+      "Twin features: size in square feet and size in square meters. Plain regression may give weights +1000 and -998. These cancel on the training data but break on new data.",
+      "Ridge splits the weight about evenly between twins, for example +1 and +1. Lasso keeps one and sets the other to 0. Elastic net tends to keep both with similar values.",
+      "Genomics or text case: 10,000 features and 500 rows. Plain regression fits the noise perfectly. Lasso may keep only 40 features, so you also get feature selection.",
+      "Penalty strength lambda: at 0 you get plain regression. At a very large value all weights go to 0 and the model predicts the mean. You pick lambda by cross-validation.",
+      "Geometry: the loss forms ellipses around the best plain solution. The penalty forms a region around zero. L2 is a circle. L1 is a diamond with corners on the axes. The ellipse often first touches the diamond at a corner, where one weight is 0.",
+      "Neural nets use the same idea. L2 regularization is called 'weight decay'. AdamW applies it in a clean way."
+    ],
+    "inside": [
+      "Ridge loss: sum of squared errors + lambda x sum of w squared. Closed form: w = (X^T X + lambda I)^-1 X^T y. Adding lambda I to the diagonal makes the matrix invertible and stable.",
+      "Lasso loss: sum of squared errors + lambda x sum of |w|. There is no closed form because |w| has a kink at 0. Solvers use coordinate descent: update one weight at a time with a soft-threshold step.",
+      "Soft threshold: a weight with a small pull from the data, below lambda, becomes exactly 0. A larger pull is reduced by lambda. This creates sparsity.",
+      "The gradient of the L2 penalty is 2 x lambda x w. It pulls each weight toward 0 in proportion to its size. The gradient of the L1 penalty is lambda x sign(w). It pulls with constant force, so small weights reach 0.",
+      "Elastic net loss: squared error + lambda1 x sum of |w| + lambda2 x sum of w squared. With a group of correlated features, lasso picks one at random. Elastic net keeps the group.",
+      "Bayesian view: ridge equals a Gaussian prior on the weights. Lasso equals a Laplace prior. Both give a maximum a posteriori estimate."
+    ],
+    "matters": [
+      "Regularization is the first tool against overfitting in linear models. Interviewers expect you to name it and explain the L1 versus L2 difference.",
+      "Lasso gives built-in feature selection. This helps when you must explain which 20 of 5,000 features drive a prediction.",
+      "Ridge fixes multicollinearity without dropping features.",
+      "The weight decay link shows that you can connect classic ML to deep learning."
+    ],
+    "watch": [
+      "Scale features before using any penalty. A feature in meters with small values needs a big weight and gets penalized more than the same feature in millimeters.",
+      "Do not penalize the bias term. It only shifts the output and does not add complexity.",
+      "Lasso with correlated features is unstable. Different samples can pick different features. Use elastic net, or check stability with bootstrap.",
+      "Select lambda on validation data inside cross-validation. Never pick it on the test set."
+    ]
+  },
+  "71": {
+    "short": [
+      "Clustering groups unlabeled points that look alike.",
+      "K-means assigns each point to the nearest center and then moves the centers, again and again.",
+      "Hierarchical clustering and DBSCAN handle cases where K-means fails."
+    ],
+    "picture": [
+      "Retail: 100,000 customers described by recency, frequency, and spend. K-means with k = 4 might find big spenders, loyal regulars, new buyers, and lapsed buyers.",
+      "K-means loop: 1) pick k random centers. 2) assign each point to its nearest center. 3) move each center to the mean of its points. 4) repeat until the centers stop moving. This often takes 10 to 50 rounds.",
+      "Choosing k: plot the total squared distance for k = 1 to 10. It drops fast, then slowly. The bend is the 'elbow'. The silhouette score (from -1 to 1) is a second check. Above 0.5 is a clear structure.",
+      "Hierarchical: start with each point alone. Merge the two closest groups again and again. The result is a tree called a dendrogram. You cut the tree at the height you want.",
+      "DBSCAN: a point with at least 5 neighbors within distance eps is a core point. Dense regions grow into clusters. Points in sparse areas are marked as noise. It finds ring shapes and needs no k.",
+      "Support tickets: embed 50,000 tickets with a sentence model. Cluster the embeddings. Read 5 examples from each cluster. You find the top issue themes without labels.",
+      "Fraud: DBSCAN on transaction features marks a few lone points as noise. A person reviews them as possible anomalies."
+    ],
+    "inside": [
+      "K-means minimizes the sum of squared distances from each point to its cluster mean. Each step lowers this value or keeps it equal, so the loop always stops. It may stop at a local minimum.",
+      "Cost per round is O(N x k x d). For 1 million points, 50 dimensions, and k = 10, that is about 500 million operations per round. This is fast.",
+      "K-means++ picks the first center at random. It picks each next center with probability proportional to the squared distance from the nearest chosen center. This spreads centers out and gives better results.",
+      "K-means assumes round, similar-size clusters because it uses the mean and Euclidean distance. A long thin cluster or a ring breaks this.",
+      "Hierarchical clustering stores a pairwise distance matrix. For 100,000 points that is about 5 billion pairs, or around 40 GB. So it fits only up to roughly 10,000 to 20,000 points.",
+      "Linkage rules: single (nearest members), complete (farthest members), average, and Ward (smallest rise in variance). Ward gives compact clusters and is a common default.",
+      "Gaussian mixture models give soft assignments. Each point gets a probability for each cluster. They fit with the EM algorithm and can model oval clusters."
+    ],
+    "matters": [
+      "Clustering is the usual answer to 'we have no labels'. It supports segmentation, topic discovery, and deduplication.",
+      "It also helps label data fast. Cluster, then label a few points per cluster, then train a supervised model.",
+      "Embedding plus clustering is a common modern pattern for LLM data. Examples are grouping chat logs, finding duplicates, and sampling diverse training data.",
+      "You must say how you check quality when no labels exist: silhouette score, cluster stability, and business review of examples."
+    ],
+    "watch": [
+      "K-means on unscaled features gives nonsense. A feature with a range of 100,000 beats a feature with a range of 1.",
+      "K-means needs k up front and is sensitive to the start. Run it with several seeds (for example 10) and keep the lowest cost.",
+      "DBSCAN struggles when clusters have very different densities. One eps cannot fit all. It also suffers in high dimensions.",
+      "A cluster is not a class. Do not report a cluster as a real-world group until a person checks that it makes sense."
+    ]
+  },
+  "72": {
+    "short": [
+      "Principal component analysis (PCA) finds new axes along which the data varies most.",
+      "You keep the top few axes and drop the rest.",
+      "This compresses the data and removes noise with little information loss."
+    ],
+    "picture": [
+      "Picture a long, thin cloud of points tilted at 45 degrees. The first principal component runs along the long side. The second runs across the short side at a right angle.",
+      "Compression: an image set has 1,000 features per image. The first 50 components may hold 95% of the variance. You store 50 numbers, not 1,000. That is a 20x saving.",
+      "Embedding storage: 1 million vectors of 768 floats use about 3.07 GB. After PCA to 128 dimensions they use about 512 MB. Search is also faster. Recall drops a little.",
+      "Variance explained: if the variances along the axes are 5, 3, and 2, the first axis explains 50%, and the first two explain 80%.",
+      "Noise removal: noise spreads over many small-variance axes. Keeping only the large axes often cleans the signal.",
+      "Visualization: PCA to 2 dimensions gives a quick plot. For cluster pictures of embeddings, t-SNE and UMAP often show local groups better. Their axis scales and distances between groups carry no exact meaning.",
+      "Low-rank link: if a weight matrix is well approximated by a few directions, you can store it as two thin matrices. This is the idea behind LoRA."
+    ],
+    "inside": [
+      "Step 1: center each feature by subtracting its mean. Step 2: compute the covariance matrix, which is X^T X / N. Step 3: find its eigenvectors and eigenvalues. Step 4: keep the eigenvectors with the largest eigenvalues.",
+      "An eigenvector is a direction. Its eigenvalue is the variance of the data along that direction. The directions are at right angles to each other.",
+      "In practice, use singular value decomposition: X = U S V^T. The columns of V are the principal directions. The variance along each is S squared / N.",
+      "Projection: new coordinates = X x V_k, where V_k holds the top k directions. Reconstruction: multiply back by V_k^T. The reconstruction error equals the sum of the dropped eigenvalues.",
+      "Cost: the covariance matrix is d x d. For d = 768 this is small. For d = 1 million, use randomized SVD or incremental PCA, which only need the top k directions.",
+      "PCA is linear. It cannot unroll a curved shape such as a spiral. Kernel PCA and autoencoders can capture curves."
+    ],
+    "matters": [
+      "PCA fights the curse of dimensionality and speeds up downstream models and vector search.",
+      "It removes correlated features without choosing by hand, which helps linear models.",
+      "It teaches the low-rank idea that returns in LoRA and embedding compression.",
+      "A common question: 'how many components do you keep?' Answer: enough for 90% to 99% explained variance, or the elbow of the variance curve, checked on the downstream task."
+    ],
+    "watch": [
+      "Always center the data. Scale features too if their units differ. Otherwise the feature with the largest units takes over the first component.",
+      "Fit PCA on the training set only. Fitting on all data leaks test information.",
+      "Components mix original features, so they are hard to explain. If you must explain, use lasso or feature importance instead.",
+      "High variance is not the same as high signal. A noisy feature can have large variance. A key small-variance feature can be dropped by PCA."
+    ]
+  },
+  "73": {
+    "short": [
+      "Metrics turn model errors into numbers that match a business risk.",
+      "Precision, recall, and F1 describe classification, and RMSE and MAE describe regression.",
+      "The right metric depends on which mistake costs more."
+    ],
+    "picture": [
+      "Fraud example: 10,000 transactions, 100 are fraud. A model that always says 'not fraud' scores 99% accuracy and catches nothing. Accuracy hides the failure.",
+      "Confusion matrix for a real model: TP = 70, FP = 30, FN = 30, TN = 9,870. Accuracy is 99.4%. Precision is 70 / 100 = 0.70. Recall is 70 / 100 = 0.70. F1 is 0.70.",
+      "Precision answers: of the items I flagged, how many were right? It matters when a false alarm is costly, such as blocking a good customer or auto-approving an invoice.",
+      "Recall answers: of the real positives, how many did I find? It matters when a miss is costly, such as fraud, cancer, or a safety fault.",
+      "Threshold trade-off: lower the threshold and recall goes up but precision goes down. A precision-recall curve shows the whole trade-off.",
+      "ROC-AUC is the chance that a random positive scores above a random negative. 0.5 is random. 1.0 is perfect. With 0.1% positives, ROC-AUC can look great while precision is poor. PR-AUC is more honest.",
+      "Regression: errors of 2, 2, 2, 2, 10. MAE = 3.6. RMSE = sqrt((4+4+4+4+100)/5) = 4.9. RMSE is larger because it punishes the big miss.",
+      "LLM and RAG: use recall@k for retrieval, faithfulness (is the answer supported by the sources?) for generation, and human review for a sample. BLEU and ROUGE only count word overlap and miss meaning."
+    ],
+    "inside": [
+      "Definitions: precision = TP / (TP + FP). Recall = TP / (TP + FN). F1 = 2PR / (P + R), the harmonic mean. The harmonic mean is close to the lower value, so a model cannot hide a weak recall behind a strong precision.",
+      "F-beta: F2 weighs recall twice as much as precision. Use it when misses cost more than false alarms.",
+      "ROC curve: plot true positive rate against false positive rate for every threshold. Area under it equals the rank probability above. It does not depend on one threshold.",
+      "PR-AUC baseline equals the positive rate. With 1% positives, a random model has PR-AUC near 0.01. So 0.30 is a large gain.",
+      "Log loss = the average of -log(probability given to the true class). It rewards good probabilities, not only good ranking. A model that says 0.99 and is wrong gets a loss of 4.6.",
+      "Precision at k and recall at k: look only at the top k results. With an analyst team that can review 1,000 alerts per day, precision at 1,000 is the metric that matters.",
+      "Multi-class: macro average takes the mean of per-class scores and treats rare classes equally. Micro average pools all counts and is dominated by large classes."
+    ],
+    "matters": [
+      "A system design answer must name the metric tied to the business risk. 'We maximize recall at 90% precision' is a strong sentence.",
+      "The metric sets the threshold, the loss weights, and the monitoring plan.",
+      "Different stakeholders need different views: finance wants cost saved, operations wants review load, and risk wants miss rate.",
+      "For LLM systems, no single metric works. Combine retrieval metrics, groundedness checks, and human audits."
+    ],
+    "watch": [
+      "Never report accuracy alone on imbalanced data.",
+      "Do not compare AUC across different test sets. The score depends on the data mix.",
+      "A metric computed at one threshold goes stale when the data shifts. Recheck the threshold after drift.",
+      "LLM-as-judge scores have bias, such as a taste for long answers. Calibrate the judge against human labels on at least 200 samples."
+    ]
+  },
+  "74": {
+    "short": [
+      "Cross-validation (CV) estimates model quality by training and testing on several different splits of the data.",
+      "Leakage happens when test information reaches training, and it makes scores look too good.",
+      "Class imbalance needs special handling in splits, metrics, and loss."
+    ],
+    "picture": [
+      "5-fold CV with 10,000 rows: split into 5 parts of 2,000. Train on 8,000 and validate on 2,000. Repeat 5 times so each part is the validation set once. Average the 5 scores and report the spread.",
+      "A score of 0.82 +/- 0.01 across folds is stable. A score of 0.82 +/- 0.08 means the result depends on luck in the split.",
+      "Leakage 1: you scale all data, then split. The scaler used the mean of the test rows. The effect is small but real. Fit it on the training part only.",
+      "Leakage 2: to predict customer complaints you include a column 'refund_issued'. A refund happens after the complaint. The model looks perfect and fails in production.",
+      "Leakage 3: the same customer appears in train and test with different rows. The model memorizes the customer. Use group K-fold so one customer stays on one side.",
+      "Time series: never shuffle. Train on January to June, validate on July. Then train on January to July, validate on August. Training on the future gives false scores.",
+      "Imbalance: 1 fraud per 1,000 rows. A class weight of about 1,000 on fraud makes one fraud miss as costly as 1,000 good rows. SMOTE makes new fraud-like rows by interpolating between real ones."
+    ],
+    "inside": [
+      "Stratified K-fold keeps the class ratio in each fold. With 0.1% positives and 5 folds on 10,000 rows, each fold has about 2 positives. That is too few. Use more data, repeated CV, or a metric with a wide interval.",
+      "Leave-one-out CV uses k = N. It has low bias but costs N training runs. Use it only for very small data.",
+      "Nested CV: an inner loop picks hyperparameters. An outer loop measures the score. This avoids a rosy score from picking the best setting on the same folds.",
+      "A pipeline object keeps the preprocessing steps (scaler, encoder, PCA) inside each fold. Each fold fits those steps on its own training part only.",
+      "Imbalance fixes work at three levels. Data: undersample the majority or oversample the minority, only inside training folds. Loss: class weights or focal loss. Decision: move the threshold using validation data.",
+      "Duplicate detection: hash or embed documents and remove near-duplicates before splitting. Near-duplicate text across train and test inflates scores a lot in document tasks."
+    ],
+    "matters": [
+      "Leakage is the most common reason a '99% offline' model fails in production. Interviewers probe this early.",
+      "Correct splits decide if your numbers are real. A split that mirrors production use (by time, by customer) gives a trustworthy estimate.",
+      "Rare-event problems like fraud, defects, and churn all need these tools.",
+      "CV gives a spread, not only a mean. The spread helps you decide if a 0.5 point gain is real."
+    ],
+    "watch": [
+      "Never apply SMOTE or resampling before the split. Copies of the same row in train and validation inflate the score.",
+      "Never use a random split on grouped or time-ordered data.",
+      "Do not tune on the test set. Keep it untouched until the very end, and use it once.",
+      "Very good scores (above 0.99 on a hard task) are a warning sign. First look for leakage, then celebrate."
+    ]
+  },
+  "75": {
+    "short": [
+      "Feature engineering turns raw data into numbers that a model can use well.",
+      "It covers encoding categories, scaling numbers, filling missing values, and building new features from domain knowledge.",
+      "On tabular problems, good features often matter more than the model choice."
+    ],
+    "picture": [
+      "Order data: raw columns are order_time, amount, and customer_id. Useful features are hour of day, day of week, amount divided by the customer's average amount, and orders in the last 7 days.",
+      "One-hot encoding: 'city' with 5 values becomes 5 columns of 0 and 1. With 10,000 cities it becomes 10,000 mostly-zero columns. That is too wide. Use frequency encoding, target encoding, or an embedding.",
+      "Cyclic time: hour 23 and hour 0 are 1 hour apart, but as numbers they are 23 apart. Use sin and cos of (2 x pi x hour / 24) so the clock wraps around.",
+      "Standardization: income has mean 60,000 and standard deviation 20,000. An income of 100,000 gives z = 2. Now income and age sit on similar scales.",
+      "Skewed values: house prices range from 50,000 to 5,000,000. Taking the log squeezes the range and makes linear models fit better.",
+      "Missing values: a blood test is missing for 30% of patients. Fill with the median and add a column 'test_missing'. Often the missingness itself predicts the outcome.",
+      "Text and images: use TF-IDF or sentence embeddings for text. Use features from a pretrained CNN or ViT for images."
+    ],
+    "inside": [
+      "Standardization: z = (x - mean) / std. Min-max: (x - min) / (max - min). Min-max is sensitive to outliers. One value of 1,000,000 squeezes all other values near 0.",
+      "Which models need scaling: distance models (KNN, SVM, k-means), gradient-based models (linear, neural), and penalized models (ridge, lasso). Tree models do not need it because they only compare values to cut points.",
+      "Target encoding replaces a category with the mean target for that category. It is strong but leaks if computed on the same rows. Compute it out-of-fold, and add smoothing: blend the category mean with the global mean based on the category count.",
+      "Embeddings for categories: a learned vector per category, for example 16 numbers for each of 10,000 products. Similar products end up with similar vectors.",
+      "Aggregates per entity: for each customer compute the mean, max, count, and trend over a window. Window features must use only past data at prediction time.",
+      "Feature selection: drop constant columns, near-duplicates, and leaky columns. Use lasso, permutation importance, or recursive elimination. Fewer features give faster, more stable models."
+    ],
+    "matters": [
+      "On a tabular task, a day spent on features usually beats a week spent on model tuning.",
+      "Domain features carry knowledge the model cannot learn from small data, such as 'days since last payment'.",
+      "Training-serving skew is a big source of bugs. A feature store computes each feature once, and both training and serving read it.",
+      "Interviewers use this topic to test if you think about leakage and production, not only notebooks."
+    ],
+    "watch": [
+      "Fit scalers, encoders, and imputers on the training set only. Then apply them to validation and test data.",
+      "Target encoding without out-of-fold computation leaks the label. The model looks strong offline and fails online.",
+      "A feature that is easy to compute in training but unavailable at prediction time breaks the system. Check each feature against the serving path.",
+      "Unseen categories at serving time crash a naive one-hot pipeline. Add an 'unknown' bucket."
+    ]
+  },
+  "76": {
+    "short": [
+      "A scalar is one number, a vector is a list of numbers, a matrix is a grid, and a tensor is an array with any number of dimensions.",
+      "Deep learning code is mostly tensors with shapes.",
+      "Most bugs are shape mismatches."
+    ],
+    "picture": [
+      "Scalar: a loss value such as 0.37. Vector: one embedding with 768 numbers, which is a point in 768-dimensional space.",
+      "Matrix as data: a table with 1,000 rows and 20 columns has shape (1000, 20). Matrix as action: a 768 x 3072 matrix turns a 768-number vector into a 3072-number vector.",
+      "Token batch: 32 sequences, 512 tokens each, 768 numbers per token. The tensor has shape (32, 512, 768). That is 12,582,912 values. In 32-bit floats, that is about 50 MB.",
+      "Image batch: 32 images, 3 color channels, 224 by 224 pixels. Shape (32, 3, 224, 224) holds 4,816,896 values.",
+      "Matrix multiply shape rule: (m x n) times (n x p) gives (m x p). The two inner sizes must match. If they differ, you get the most common error in deep learning code.",
+      "A dense layer with 768 inputs and 3072 outputs has a weight matrix of 2,359,296 numbers plus 3072 biases.",
+      "Rank: a matrix has rank r if it has r independent directions. A 4096 x 4096 matrix has 16,777,216 numbers. A LoRA update with rank 8 uses two thin matrices, 4096 x 8 and 8 x 4096. That is 65,536 numbers, about 0.4% of the full size."
+    ],
+    "inside": [
+      "Matrix multiply: C[i][j] = sum over k of A[i][k] x B[k][j]. Each output value is a dot product of a row of A and a column of B. The cost is about 2 x m x n x p operations.",
+      "A GPU runs matrix multiplies very fast because every output value is independent. This is why deep learning uses matrices everywhere.",
+      "Broadcasting: when one tensor has a size-1 dimension, it is stretched to match the other. Adding a bias of shape (768) to a tensor of shape (32, 512, 768) works. Broadcasting can also hide bugs when shapes match by accident.",
+      "Transpose swaps two axes. Attention computes Q x K^T: (T x d) times (d x T) gives (T x T), one score for each token pair.",
+      "Memory layout: tensors are stored in one flat block. A reshape only changes the view. A transpose may need a copy before some operations.",
+      "Element-wise multiply (Hadamard product) multiplies matching positions. It is not the same as matrix multiply. The two give different shapes and different results."
+    ],
+    "matters": [
+      "Shape reasoning is the fastest way to debug a model and to check an architecture on a whiteboard.",
+      "Memory and compute estimates start from shapes. Activation size = batch x length x width x bytes.",
+      "Many methods, such as PCA, LoRA, and embeddings, are linear algebra facts. Rank and projection give you the vocabulary.",
+      "Interviewers often say 'what is the output shape?' as a quick check of real experience."
+    ],
+    "watch": [
+      "Do not mix element-wise multiply and matrix multiply. In many libraries they use different operators.",
+      "Wrong axis in sum, mean, or softmax gives valid shapes and wrong numbers. State the axis out loud.",
+      "Batch dimension order differs between libraries and layers. Check whether the batch comes first or the channels come first.",
+      "Mixed precision halves the memory (16-bit floats use 2 bytes), but it can overflow or lose small values. Keep loss scaling in mind."
+    ]
+  },
+  "77": {
+    "short": [
+      "The dot product multiplies matching numbers of two vectors and adds the results.",
+      "A large positive value means the vectors point in a similar direction.",
+      "Cosine similarity divides out the lengths, so it measures direction only."
+    ],
+    "picture": [
+      "Take a = (1, 2, 3) and b = (4, 5, 6). Dot product = 1x4 + 2x5 + 3x6 = 32. The lengths are 3.74 and 8.77. Cosine = 32 / (3.74 x 8.77) = 0.97. The vectors point almost the same way.",
+      "Perpendicular vectors have dot product 0, such as (1, 0) and (0, 1). Opposite vectors, such as (1, 0) and (-1, 0), give -1 for cosine.",
+      "Document search: a short query and a long document may have very different vector lengths. Cosine ignores length, so a long document does not win just by being large.",
+      "Projection: how much of a points along b. The dot product divided by the length of b gives the signed length of that shadow.",
+      "Attention: each token's query vector takes a dot product with every key vector. High scores mean 'look here'. Softmax turns those scores into weights.",
+      "A linear layer: each output number is a dot product of one weight row and the input. A layer with 3072 outputs does 3072 dot products.",
+      "Vector search: embeddings are often normalized to length 1. Then the dot product equals cosine, and the search can use fast inner-product indexes."
+    ],
+    "inside": [
+      "Formulas: a.b = sum of a_i x b_i = ||a|| x ||b|| x cos(theta). Cosine similarity = a.b / (||a|| x ||b||).",
+      "The cost is d multiply-adds for dimension d. Comparing one query with 1 million vectors of 768 dimensions takes about 768 million multiply-adds. Brute force on a GPU does this in a few milliseconds.",
+      "If vectors are normalized, cosine distance = 1 - cosine, and Euclidean distance squared = 2 x (1 - cosine). So the three rank results in the same order.",
+      "Scaled dot product attention: scores = Q K^T / sqrt(d_k). For random vectors with unit-variance entries, the dot product has variance d_k. For d_k = 64, dividing by 8 keeps scores near unit size. Without it, softmax saturates.",
+      "Embedding models are trained so that related texts have high cosine. Contrastive loss pulls matching pairs together and pushes others apart.",
+      "Cosine ignores magnitude. Sometimes magnitude carries information, such as how confident or how frequent. Then dot product keeps more signal."
+    ],
+    "matters": [
+      "This one operation sits under attention, retrieval, recommendation, and every linear layer.",
+      "Interviewers ask 'dot product or cosine for RAG?' Strong answer: normalize the embeddings, then they are the same; check what the embedding model was trained with.",
+      "It lets you reason about cost: search time grows with the number of vectors times the dimension.",
+      "Understanding the geometry helps you explain why synonyms land near each other in embedding space."
+    ],
+    "watch": [
+      "Dot product favors long vectors. If you want pure similarity, normalize first.",
+      "Do not mix embeddings from different models in one index. Their spaces are unrelated, and the cosine values mean nothing.",
+      "High cosine does not mean the same fact. 'The drug is safe' and 'The drug is not safe' can score above 0.9 in some models. Use a reranker or a cross-encoder for fine meaning.",
+      "In high dimensions, cosine values cluster in a narrow band. A threshold such as 0.8 must be tuned on your data and not copied from a blog."
+    ]
+  },
+  "78": {
+    "short": [
+      "Softmax turns a list of raw scores, called logits, into probabilities that add up to 1.",
+      "It raises e to each score and divides by the total.",
+      "The largest score gets an even larger share, so softmax is a smooth version of argmax."
+    ],
+    "picture": [
+      "Scores (2, 1, 0.1). Exponentials: 7.39, 2.72, 1.11. Sum = 11.21. Probabilities: 0.66, 0.24, 0.10. The top score has a 2-point lead and gets 66%.",
+      "Temperature 0.5 divides the scores by 0.5 first: (4, 2, 0.2). Probabilities become 0.86, 0.12, 0.02. The output is sharper.",
+      "Temperature 2 gives (1, 0.5, 0.05). Probabilities become 0.50, 0.30, 0.19. The output is flatter and more random.",
+      "LLM next-token step: the model gives 50,000 or more scores, one per token. Softmax makes a probability for each. Sampling picks one token from that distribution.",
+      "Attention: the scores from one query against 512 keys go through softmax. The 512 weights add to 1. The output is a weighted mix of value vectors.",
+      "Mixture of experts: a router scores 8 experts and uses softmax. The top 2 experts get the token, and their weights come from the softmax values.",
+      "Adding 100 to every score changes nothing. (102, 101, 100.1) gives the same probabilities as (2, 1, 0.1)."
+    ],
+    "inside": [
+      "Formula: softmax(z)_i = exp(z_i) / sum over j of exp(z_j). Exponentials are always positive, so every probability is positive and they sum to 1.",
+      "Shift invariance: softmax(z + c) = softmax(z). So implementations subtract the maximum score first. Then the largest exponent is exp(0) = 1 and nothing overflows.",
+      "Overflow: in 32-bit floats, exp(89) is already too large and becomes infinity. Logits of 100 are common in real models. Without the max shift you get NaN.",
+      "Gradient with cross-entropy: the gradient of the loss with respect to logit i is p_i - y_i. That is the predicted probability minus the target. It is simple and strong when the model is wrong.",
+      "Libraries fuse softmax and log into one stable function (log-softmax). They compute log of probabilities without taking the exponential and then the log, which would lose precision.",
+      "The full Jacobian is p_i x (delta_ij - p_j). When one probability is near 1, the gradients of the others vanish. This is why very peaked softmax outputs learn slowly."
+    ],
+    "matters": [
+      "Softmax shows up in classifier outputs, attention, routers, and sampling. You can explain four parts of an LLM with one idea.",
+      "Temperature is a practical knob. Low values give stable, repeatable answers. Higher values give variety.",
+      "Calibration questions start here. Softmax outputs look like probabilities but are often overconfident.",
+      "Numerical stability is a classic follow-up question."
+    ],
+    "watch": [
+      "Apply softmax over the right axis. On a tensor of shape (batch, tokens, vocab), use the vocab axis for next-token odds and the key axis for attention.",
+      "Do not feed softmax outputs into a loss that already applies softmax. This double softmax is a common bug that hurts training.",
+      "Softmax probabilities are not calibrated. A 0.95 does not mean 95% of such predictions are right. Check with a reliability plot, and use temperature scaling if needed.",
+      "Softmax forces the classes to compete and sum to 1. For multi-label tasks, where several labels can be true, use an independent sigmoid per label."
+    ]
+  },
+  "79": {
+    "short": [
+      "A derivative tells how much a function changes when you nudge its input.",
+      "A gradient collects the derivatives for all weights into one vector that points uphill.",
+      "Training steps in the opposite direction to lower the loss."
+    ],
+    "picture": [
+      "Take L = w squared. The derivative is 2w. At w = 2.2 the slope is 4.4. The loss rises by about 4.4 for each unit of w, so we decrease w.",
+      "One step with learning rate 0.1: w = 2.2 - 0.1 x 4.4 = 1.76. The loss drops from 4.84 to 3.10. Repeat and w moves toward 0.",
+      "Learning rate 1.1 on the same function: w = 2.2 - 1.1 x 4.4 = -2.64. The next step goes to 3.17, then -3.8. The weight grows each step. Training diverges.",
+      "A hiker in fog on a hill feels the slope under the feet and steps downhill. The gradient is the slope. The learning rate is the step length.",
+      "Chain rule: y = sigmoid(w x). The slope of y with respect to w equals the slope of the sigmoid times x. Backprop applies this rule layer by layer from the output to the input.",
+      "Vanishing gradient: the sigmoid slope is at most 0.25. Through 10 sigmoid layers, the gradient shrinks by about 0.25^10, which is 0.000001. Early layers barely learn. ReLU and residual connections fix this.",
+      "Finite difference check: nudge w by 0.0001, measure the loss change, and divide. It matches the formula gradient. Engineers use this to test backprop code."
+    ],
+    "inside": [
+      "Derivative: f'(x) is the limit of (f(x + h) - f(x)) / h as h goes to 0. For many weights, a partial derivative changes one weight and holds the others fixed.",
+      "Gradient: the vector of all partial derivatives of the loss. A model with 7 billion weights has a gradient with 7 billion numbers.",
+      "Update rule: w = w - eta x gradient. Mini-batch gradient descent estimates the gradient from a small batch, for example 32 to 4096 examples. The estimate is noisy but cheap.",
+      "Backpropagation: do a forward pass and store the activations. Then go backward and multiply local derivatives by the chain rule. It costs about 2 times the forward pass in compute.",
+      "Memory: backprop stores activations from the forward pass. This is why training uses much more memory than inference. Gradient checkpointing trades extra compute for lower memory.",
+      "Momentum and Adam keep running averages of gradients. They smooth the noise and scale each weight's step. Adam stores two extra numbers per weight.",
+      "Jacobian: the matrix of derivatives for a function with many inputs and many outputs. Hessian: the matrix of second derivatives that describes curvature. Know the names; most deep nets do not compute the Hessian."
+    ],
+    "matters": [
+      "Every optimizer and every training loop rests on this. If you explain gradients clearly, interviewers trust your deeper answers.",
+      "Many training failures map to gradients: NaN values, loss that does not drop, and slow early layers.",
+      "Gradient clipping at a fixed norm, for example 1.0, keeps rare huge gradients from wrecking a run.",
+      "Learning-rate choice is the most important hyperparameter in most runs."
+    ],
+    "watch": [
+      "A large learning rate overshoots and diverges. A tiny one trains too slowly. Use a warmup and a decay schedule for large models.",
+      "Exploding gradients give NaN loss. Use clipping, lower the learning rate, and check for bad data.",
+      "Local minima are less of a worry in large nets. Saddle points and flat regions are more common. Noise and momentum help escape them.",
+      "Do not forget to zero the gradients between steps in frameworks that accumulate them. Stale gradients add up and give wrong updates."
+    ]
+  },
+  "80": {
+    "short": [
+      "Probability measures how likely events are.",
+      "Bayes' rule updates a prior belief with new evidence to give a posterior belief.",
+      "Many ML losses and model outputs come directly from probability."
+    ],
+    "picture": [
+      "Medical test: 1% of people are sick. The test finds 99% of sick people. It wrongly flags 5% of healthy people.",
+      "Count it for 10,000 people: 100 are sick and 99 test positive. 9,900 are healthy and 495 test positive. Total positives = 594. Only 99 of them are sick, which is 16.7%.",
+      "So a positive result means a 17% chance of illness, not 99%. The low base rate dominates. This is the base-rate fallacy.",
+      "Fraud: 0.1% of transactions are fraud. Take 100,000 transactions: 100 are fraud and 99 are caught. 99,900 are good and 1% of them, 999, are flagged by mistake. Precision = 99 / 1,098 = 9%.",
+      "Spam: Naive Bayes multiplies the chance of each word given spam. It assumes words are independent given the class. This is false, but the model still works as a fast text baseline.",
+      "Distributions: Bernoulli for yes or no, categorical for one of K choices (the next token), Gaussian for noise and weight initialization, uniform for equal chance.",
+      "Expected value: a model that gives a 0.3 chance of a 100-dollar loss has an expected loss of 30 dollars. Decisions that use cost and probability together follow this rule."
+    ],
+    "inside": [
+      "Bayes: P(A given B) = P(B given A) x P(A) / P(B). In words: posterior = likelihood x prior / evidence. The evidence is a normalizer that makes the result sum to 1.",
+      "Conditional probability P(A given B) is the chance of A inside the world where B is true. P(A given B) and P(B given A) are different numbers.",
+      "Independence: P(A and B) = P(A) x P(B). Naive Bayes assumes independence of features given the class, which cuts the number of parameters from exponential to linear in the number of features.",
+      "Maximum likelihood: choose the parameters that make the observed data most probable. Taking the log of the likelihood turns products into sums. Minimizing the negative log likelihood equals minimizing cross-entropy.",
+      "Gaussian noise plus maximum likelihood gives mean squared error. Bernoulli labels plus maximum likelihood give binary cross-entropy. So the common losses are not arbitrary.",
+      "Variance measures spread: the average of (x - mean) squared. Variance of a sum of independent variables is the sum of variances. This explains why averaging n models cuts noise."
+    ],
+    "matters": [
+      "LLM output is a categorical distribution over tokens. Confidence thresholds, sampling, and calibration are probability topics.",
+      "Base-rate thinking prevents bad system designs. A rare-event detector needs a human review step sized to the false alarm count.",
+      "Knowing that losses come from likelihoods lets you choose a loss for a new problem, for example count data or heavy-tailed noise.",
+      "Bayesian updating suits online learning, A/B tests, and risk scores that change as evidence arrives."
+    ],
+    "watch": [
+      "Do not swap P(A given B) and P(B given A). 'Most fraud uses new devices' is not 'most new devices are fraud'.",
+      "Ignoring the base rate gives wildly wrong confidence. Always ask how common the event is.",
+      "Do not claim features are independent because Naive Bayes works. It works for ranking, but its probabilities are often extreme and uncalibrated.",
+      "Model scores are not true probabilities until you check calibration on held-out data."
+    ]
+  },
+  "81": {
+    "short": [
+      "Entropy measures how uncertain a distribution is, and cross-entropy measures how well a predicted distribution matches the true one.",
+      "KL divergence is the extra cost of using the wrong distribution.",
+      "LLMs train by minimizing cross-entropy."
+    ],
+    "picture": [
+      "A fair coin has entropy of 1 bit. A coin that lands heads 90% of the time has entropy of 0.47 bits. A coin that always lands heads has 0 bits. Less surprise means lower entropy.",
+      "Surprise of one event: -log2 of its probability. An event with probability 1/2 gives 1 bit. An event with probability 1/1024 gives 10 bits. Rare events are very surprising.",
+      "Classification loss: the true class is 'cat'. The model gives cat 0.8. The loss is -ln 0.8 = 0.22. If it gives cat 0.1, the loss is 2.30. If it gives cat 0.01, the loss is 4.61.",
+      "True p = (0.5, 0.5). Model q = (0.9, 0.1). Cross-entropy = 1.74 bits. Entropy of p = 1 bit. KL = 0.74 bits. The model wastes 0.74 bits per event.",
+      "Language model: a loss of 2.0 nats per token gives perplexity e^2 = 7.4. The model is as unsure as if it picked among about 7 equally likely tokens at each step.",
+      "A model that guesses uniformly over a 50,000-token vocabulary has a loss of ln 50,000 = 10.8 and perplexity 50,000. A good LLM reaches a perplexity of single digits on typical text.",
+      "Distillation and RLHF use KL: keep the new model's distribution close to the reference model so it does not drift into odd outputs."
+    ],
+    "inside": [
+      "Entropy: H(p) = -sum of p x log p. It is the average surprise. It is largest for a uniform distribution and zero for a certain outcome.",
+      "Cross-entropy: H(p, q) = -sum of p x log q. This is the average surprise when the world follows p but you predict q. It is smallest when q equals p.",
+      "With a one-hot true label, only the true class term remains. The loss is -log of the probability given to the correct class.",
+      "KL divergence: KL(p || q) = H(p, q) - H(p) = sum of p x log(p / q). It is never negative and equals 0 only when p = q. Since H(p) is fixed by the data, minimizing cross-entropy equals minimizing KL.",
+      "KL is not symmetric. KL(p || q) punishes q for giving low probability where p has mass, so q tries to cover all of p. KL(q || p) lets q pick one mode and ignore the rest.",
+      "Perplexity = exp(cross-entropy in nats), or 2 to the power of the loss in bits. Compare perplexity only for the same tokenizer and test text.",
+      "Connection to maximum likelihood: minimizing average cross-entropy on training data is the same as maximizing the likelihood of that data."
+    ],
+    "matters": [
+      "The LLM training loss is cross-entropy over next tokens. This is the most important loss in modern AI.",
+      "Perplexity and loss curves are the first signals of training progress.",
+      "KL appears in RLHF, DPO, VAEs, and distillation. Know it as 'distance from a reference distribution'.",
+      "Decision trees use entropy for information gain, so the idea links classic ML and deep learning."
+    ],
+    "watch": [
+      "KL is not a true distance because it is asymmetric. Do not swap its arguments without thinking.",
+      "Log of zero is minus infinity. A model that gives probability 0 to the true class has infinite loss. Libraries add a small epsilon or work in log space.",
+      "Lower perplexity does not guarantee better answers. A model can fit text well and still give wrong or unsafe output.",
+      "Compare losses only across the same tokenizer and dataset. Different tokenizers split text into different numbers of tokens."
+    ]
+  },
+  "82": {
+    "short": [
+      "A reliable system design answer follows a fixed order: clarify the goal, define inputs and outputs, draw the pipeline, pick the cheapest model that meets the target, plan serving, and plan monitoring.",
+      "Defend each choice and name how it fails.",
+      "A clear skeleton in the first minute shows seniority."
+    ],
+    "picture": [
+      "Step 1, clarify (about 60 seconds): who are the users, what is the success metric, what latency and volume, what cost cap, is there personal data, must it run on premises, which languages.",
+      "Step 2, inputs and outputs: PDFs, emails, and call audio go in. A JSON record, an answer with citations, or an action comes out.",
+      "Step 3, boxes: ingest, understand (OCR, parse, classify), retrieve or reason, act through tools, human review, audit log. Draw arrows and label them.",
+      "Step 4, model choice: try rules first, then classical ML, then a small fine-tuned model, then a large LLM. Choose the cheapest one that meets the metric. Keep a baseline to compare.",
+      "Step 5, serving: online or batch, the latency budget, GPU size, caching, and fallback if the model is down.",
+      "Step 6, failures and monitoring: what breaks, how you detect it, and how you recover.",
+      "Back-of-envelope: 100,000 documents per day is 1.2 per second on average. If 80% arrive in 8 business hours, the peak is about 2.8 per second. At 3 seconds each, you need about 8 parallel workers."
+    ],
+    "inside": [
+      "Clarify first because the answer to 'what metric' changes the whole design. A support bot judged on resolution rate needs a different system from one judged on cost per ticket.",
+      "Latency budget: split the total across steps. For a 3-second chat answer: 100 ms guardrail, 300 ms retrieval, 200 ms rerank, 2,000 ms generation, 400 ms margin.",
+      "Sizing: requests per second x seconds per request = concurrent work. Add a peak factor of 2 to 5. For LLMs, also count tokens per second per GPU and the memory for the KV cache.",
+      "Model ladder: a regex that catches 60% of cases at zero cost may beat a model for that slice. Route the rest to a classifier, then to an LLM. Each step is more costly and handles harder cases.",
+      "Human in the loop: set a confidence threshold. Below it, send to a person. Choose the threshold from the review team's capacity and the cost of a wrong automatic action.",
+      "MLOps basics: version data, models, and prompts. Track experiments. Keep a model registry. Run CI with evaluation gates. Make pipelines reproducible. Monitor and retrain on a schedule or a trigger."
+    ],
+    "matters": [
+      "Interviewers grade structure as much as content. A fixed order lets you stay calm and cover the ground.",
+      "Numbers show you can size a system. Even rough estimates, stated with assumptions, beat vague words.",
+      "Naming failure modes and fallbacks shows production experience.",
+      "Choosing the cheapest model that meets the metric shows judgment and cost awareness."
+    ],
+    "watch": [
+      "Do not jump to 'use GPT-4 and LangChain'. State the goal and metric first.",
+      "Do not skip the failure path. Every box can fail, and you should say what happens next.",
+      "Do not leave out a human fallback for risky actions such as refunds, payments, and medical advice.",
+      "Do not present one design as the only option. Name one alternative per major choice and say why you did not pick it."
+    ]
+  },
+  "83": {
+    "short": [
+      "Offline metrics test a model on held-out data before launch, and online metrics measure real business impact after launch.",
+      "Drift happens when production data moves away from training data.",
+      "You must monitor drift and be ready to retrain or roll back."
+    ],
+    "picture": [
+      "Offline for a document bot: recall@5 of 0.92 and faithfulness of 0.95 on a golden set of 500 questions. Latency p95 of 2.1 seconds. A release must pass these gates.",
+      "Online for the same bot: automation rate, average handling time, CSAT score, cost per ticket, and escalation rate. A model can pass offline gates and still fail here.",
+      "Data drift: a new vendor sends invoices with a new layout. The inputs look different. The OCR confidence drops from 0.95 to 0.80 in one week.",
+      "Concept drift: fraudsters change tactics. The same transaction features now mean something different. Input statistics look normal, but precision falls.",
+      "PSI (population stability index) compares a feature's distribution now with training. Below 0.1 is stable. 0.1 to 0.25 is a moderate shift. Above 0.25 is a large shift and needs action.",
+      "Rollout ladder: shadow mode (run silently and compare), canary (5% of traffic), A/B test (50/50 with a metric), full rollout. Keep a one-click rollback at every step.",
+      "A/B sample size: baseline conversion 10%, target lift of 2 points. About 16 x 0.1 x 0.9 / 0.02^2 = 3,600 users per arm. For a 1-point lift, you need about 14,400 per arm."
+    ],
+    "inside": [
+      "A golden set is a fixed, labeled test set that represents production. Refresh it with new cases, for example from human corrections, so it does not go stale.",
+      "Drift detectors: PSI, KL divergence, or a Kolmogorov-Smirnov test on feature distributions. Also track model outputs: confidence histograms, class mix, and judge scores.",
+      "Label delay: fraud labels arrive after 30 to 90 days. Until then you watch proxies, such as feature drift and score distribution, and sample cases for fast manual labels.",
+      "A/B test mechanics: randomize by user, not by request, so one user sees one version. Fix the metric and the sample size before the test. Run for full weekly cycles. Test for significance and also check guardrail metrics such as latency and complaints.",
+      "Required sample grows as 1 / effect squared. Halving the effect you want to detect needs 4 times more users.",
+      "Online monitoring dashboards: input volume, error rate, latency p50 and p95, fallback rate, human-correction rate, and cost per request. Alert on change from baseline, not only on fixed limits.",
+      "Retraining triggers: scheduled (monthly), drift-based (PSI above 0.25), or performance-based (human-correction rate above 8%). Every retrain passes the same offline gates before release."
+    ],
+    "matters": [
+      "It shows you think beyond the notebook. Models in production live for years and the world changes.",
+      "Business teams care about online metrics. Linking a model metric to money or time saved is a strong interview move.",
+      "A staged rollout limits damage. A bad model on 5% of traffic is a small incident, not a major one.",
+      "Drift monitoring is the main reason models are retrained. Without it, you learn about problems from angry users."
+    ],
+    "watch": [
+      "A great offline score can become a worse online result. Causes: leakage, mismatch between test and live data, and added latency.",
+      "Never ship without testing rollback. A rollback that has never been tried may fail when you need it.",
+      "Do not stop an A/B test the moment it looks significant. Repeated peeking inflates false positives. Use the planned sample size or a sequential method.",
+      "Drift alerts without an owner and a runbook get ignored. Assign who acts and what they do."
+    ]
+  },
+  "84": {
+    "short": [
+      "Most interview scenarios share one skeleton: ingest, understand, retrieve or reason, act, review by a human, and monitor.",
+      "You win by using a few reusable answer patterns and fitting real numbers into them.",
+      "Below are five patterns and four worked scenarios."
+    ],
+    "picture": [
+      "Pattern 1, clarify then skeleton: ask about users, metric, volume, latency, cost, and data rules. Then draw the six boxes. Example: a RAG support bot for 20,000 tickets per day with a 3-second limit.",
+      "Pattern 2, cheapest-model ladder: rules, then classical ML, then a small tuned model, then a large LLM. Example: in fraud, a rule blocks known stolen cards. A gradient boosting model scores the rest. An LLM only writes the case summary for analysts.",
+      "Pattern 3, confidence routing: high confidence goes straight through. Low confidence goes to a person. Example: OCR invoices post to the ERP only if every field passes validation and confidence.",
+      "Pattern 4, metric + failure + monitor triple: for each box say how you measure it, how it fails, and how you detect that. Example: retrieval is measured by recall@k and fails when documents are stale. You detect it by a falling click-through rate on cited sources.",
+      "Pattern 5, number it: convert volume into per-second load, tokens, memory, and cost. Example: 20,000 tickets x 3,300 tokens = 66 million tokens per day.",
+      "Scenario A, RAG support bot: 50,000 help articles cut into about 250,000 chunks of 400 tokens. At 768 dimensions in float32 the vectors use about 768 MB. Hybrid search (keyword plus vector) with a reranker feeds the top 5 chunks to the LLM with citations.",
+      "Scenario B, card fraud: 5 million transactions per day, 0.1% fraud means 5,000 cases. The average load is 58 per second, and the peak is about 290 per second. The decision budget is 100 ms, so use gradient boosting on precomputed features, not an LLM in the path.",
+      "Scenario C, document OCR pipeline: 20,000 invoices per day, 10 fields each. If each field is 98% correct, all 10 are correct only 0.98^10 = 82% of the time. So the straight-through rate caps near 82% unless you add validation and review.",
+      "Scenario D, LLM fine-tune on internal docs: first try RAG, because facts change and you need citations. Fine-tune only for style, format, or domain terms. A LoRA run on a 7B model needs about 5,000 to 10,000 good instruction pairs."
+    ],
+    "inside": [
+      "RAG bot checks: track recall@5 on 500 labeled questions, faithfulness (answer supported by cited text), p95 latency, cost per query, and escalation rate. Apply permission filters at retrieval time so users only see documents they may read.",
+      "RAG bot failures: stale or duplicate chunks, a table split across chunks, and questions with no answer in the base. Add an 'I do not know, handing to an agent' path when the top retrieval score is below a threshold.",
+      "Fraud details: split train and test by time, not at random. Use precision at the review capacity, for example the top 1,000 alerts per day, plus recall of fraud value in dollars. Fraud labels arrive late, so watch score drift as a proxy. Add rules for new attack types while the model catches up.",
+      "OCR pipeline: ingest, clean and deskew, layout analysis, OCR or a vision-language model, field extraction to a JSON schema, validation (line items sum to the total, tax ID format, vendor in the master list), confidence routing, then post to the ERP by API. Measure field accuracy, character error rate, and straight-through rate.",
+      "Fine-tune on internal docs: build the eval set first. Split by document, not by sentence, to avoid leakage. QLoRA keeps a 7B model in 4-bit, about 3.5 GB of weights, so one 24 GB GPU can train it. Compare the tuned model with a RAG baseline on the same questions, and check that general skills did not drop.",
+      "In every scenario say: why this box, one alternative, the failure mode, the bottleneck, and the metric. Say where deterministic rules replace AI, and where a human stays in control."
+    ],
+    "matters": [
+      "These patterns turn a vague prompt like 'design a support bot' into a calm, ordered answer with numbers.",
+      "Interviewers watch for judgment: use rules where rules work, AI where needed, and humans where the risk is high.",
+      "Concrete numbers expose your assumptions, and the interviewer can correct them. That makes the talk a discussion, not a lecture.",
+      "A labeled diagram with arrows and a short failure note on each box is easy to follow and easy to defend."
+    ],
+    "watch": [
+      "Do not design everything as an agent. Agents add cost, delay, and risk. Use a fixed pipeline unless the task needs open-ended tool choice.",
+      "Do not name tools without reasons. 'Vector database' is not an answer until you say why, how big, and what recall you target.",
+      "Do not forget data rules: personal data masking, access control, audit logs, and where the model runs.",
+      "Do not claim a metric without saying how you measure it. 'High accuracy' means nothing without a test set, a threshold, and a number."
+    ]
+  }
+}

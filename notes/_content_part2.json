@@ -1,0 +1,761 @@
+{
+  "21": {
+    "short": [
+      "QLoRA fine-tunes a large model on a small GPU. It stores the frozen base weights in 4 bits and trains small LoRA adapters in 16-bit precision.",
+      "The base model never changes. Only the adapters learn, so the optimizer state stays tiny."
+    ],
+    "picture": [
+      "Think of a 500-page reference book printed in tiny font to save paper. You keep the book unchanged and clip a few sticky notes on top. QLoRA works the same way: the book is the 4-bit base and the sticky notes are the adapters.",
+      "A team wants a legal-clause classifier from a 7B model. Full fine-tuning needs about 16 bytes per parameter for weights, gradients, and Adam states. That is roughly 112 GB. QLoRA needs about 4 to 6 GB for the model plus some activations, so one 24 GB card is enough.",
+      "The 65B case from the QLoRA paper: 16-bit weights alone take 130 GB. Full fine-tuning with Adam takes more than 780 GB. With 4-bit weights the base takes about 33 GB, so one 48 GB GPU can train it.",
+      "A 7B Llama with LoRA rank 16 on all linear layers has about 40M trainable parameters. In BF16 that is about 80 MB. Adam adds two FP32 states per parameter, so about 320 MB more.",
+      "Most training memory then comes from activations, not weights. Gradient checkpointing trades extra compute for lower activation memory.",
+      "Training speed is lower than plain LoRA by roughly 20 to 40 percent. Each step must dequantize the 4-bit weights before every matrix multiply.",
+      "Failure example: you train a QLoRA adapter, then merge it straight into the 4-bit weights. The rounding error in the merge changes outputs. Quality drops by a visible margin."
+    ],
+    "inside": [
+      "Storage: each base weight becomes a 4-bit code. The weights are cut into blocks of 64 values. Each block keeps one scale constant (the absmax of the block) so the codes can map back to real numbers.",
+      "NF4 (NormalFloat 4) uses 16 code levels placed at quantiles of a normal distribution. Pretrained weights look bell-shaped. So NF4 puts more levels near zero, where most weights sit. This gives lower error than evenly spaced INT4.",
+      "Double quantization: the scale constants cost 32 bits per 64 weights, which is 0.5 bits per weight. QLoRA quantizes these scales again to 8 bits in groups of 256. This saves about 0.37 bits per weight. On a 65B model this is about 3 GB.",
+      "Forward pass: the code loads a block of 4-bit weights, dequantizes it to BF16, and runs the matrix multiply. It then discards the BF16 copy. No full BF16 copy of the model ever exists.",
+      "Backward pass: gradients pass through the frozen dequantized weights to reach the adapters. The code does not compute or store weight gradients for the base.",
+      "Update: the optimizer changes only LoRA matrices A and B in BF16 or FP32. The adapted layer computes $Wx + (\\alpha/r)BAx$, where W is the dequantized frozen weight.",
+      "Paged optimizers allocate optimizer state in unified memory. When GPU memory spikes, for example on a long batch, the driver pages state to CPU RAM and back. This avoids out-of-memory crashes."
+    ],
+    "matters": [
+      "It is the default recipe when the interviewer says 'one GPU, big model, limited budget'. You must state the memory numbers to show you understand the trade.",
+      "It shows the split between storage dtype (4-bit) and compute dtype (BF16). Many candidates mix these up.",
+      "The paper showed QLoRA matches 16-bit full fine-tuning quality on several benchmarks. It is therefore a quality-preserving method, not just a hack.",
+      "It leads to follow-up questions on quantization error, adapter merging, and inference format."
+    ],
+    "watch": [
+      "Merge error: do not merge adapters into the 4-bit base. Reload the base in BF16, merge, then re-quantize if needed. Then re-evaluate.",
+      "Compute dtype: FP16 compute can overflow in some layers. Use BF16 compute where the GPU supports it.",
+      "Training format is not serving format. The NF4 base is a training aid. For serving, many teams use AWQ, GPTQ, GGUF, or FP8 instead.",
+      "Out-of-memory still happens with long sequences. Activations scale with batch size and sequence length. Lower the sequence length or turn on gradient checkpointing.",
+      "Always mask prompt tokens in the loss for instruction data. Otherwise the model also learns to predict the prompt."
+    ]
+  },
+  "22": {
+    "short": [
+      "PEFT (parameter-efficient fine-tuning) trains a tiny set of new or selected parameters. The base model stays frozen. The family includes adapters, prefix tuning, prompt tuning, LoRA, IA3, and BitFit.",
+      "Each method differs in where it adds trainable parameters and what it costs at inference."
+    ],
+    "picture": [
+      "One company serves 50 customers from one base model. Each customer gets a small adapter file of 20 to 100 MB instead of a 14 GB model copy. The server swaps adapters per request. Storage drops from 700 GB to under 5 GB.",
+      "Adapters (Houlsby style) insert a small bottleneck MLP inside each layer. It maps d to r, applies a nonlinearity, maps back to d, and adds a residual. For BERT-base with d=768 and r=64, one adapter has about 98K weights. Two per layer across 12 layers gives about 2.4M, which is about 2 percent of 110M.",
+      "Prefix tuning learns key and value vectors that sit in front of the real tokens at every layer. For a 7B Llama with 20 prefix tokens, 32 layers, and d=4096, that is 20 x 2 x 32 x 4096, about 5.2M parameters.",
+      "Prompt tuning is simpler. It learns only soft input embeddings. With 20 tokens and d=4096 that is about 82K parameters. It matches full fine-tuning only for very large models, at around 10B parameters and up.",
+      "IA3 learns scaling vectors that multiply the keys, the values, and the FFN activations. It trains about 0.01 percent of the parameters. BitFit trains only bias terms, about 0.1 percent.",
+      "LoRA adds a low-rank update to weight matrices. After training you can merge it into the base weights, so inference adds zero latency.",
+      "Failure example: a prompt-tuning run on a 350M model with a default learning rate stays at the base loss. Small models need a large learning rate and good initialization. Full LoRA works with far less tuning.",
+      "Rule of thumb: LoRA is the default. Adapters suit multi-task setups. Prefix and prompt tuning suit cases where you must not touch any weights."
+    ],
+    "inside": [
+      "What is stored: for adapters, two small matrices per insertion point. For prefix tuning, a table of shape (prefix_len, layers x 2 x d). For prompt tuning, a table of shape (prompt_len, d). For IA3, vectors of size d or ffn_dim.",
+      "What is compared: the training loss on the downstream task. The gradient flows through the frozen model to the new parameters. Frozen weights get no gradient update.",
+      "Prefix tuning changes the attention keys and values. Each real token can attend to the learned prefix. The prefix is not a text token. It lives directly in key/value space at each layer.",
+      "Prompt tuning injects soft vectors only at the input layer. Later layers receive them through normal computation. This is why it needs a big model to work well.",
+      "Adapter at inference: the extra layers run in sequence, so each layer adds latency. LoRA avoids this by merging $W' = W + BA$. IA3 can also fold its scales into existing weights.",
+      "Optimizer memory shrinks with trainable count. Adam stores 8 extra bytes per trainable parameter in FP32. With 40M trainable parameters that is 320 MB. With 7B it would be 56 GB."
+    ],
+    "matters": [
+      "Interviewers ask you to compare methods by trainable count, inference latency, and context cost. Have one number for each.",
+      "Multi-tenant serving is a real use case. One base model plus many hot-swappable adapters cuts cost sharply.",
+      "It tests whether you know why LoRA won: no inference cost, simple, and works across model sizes.",
+      "It separates a reasoned answer from a memorized list."
+    ],
+    "watch": [
+      "Prefix tokens use context window space and attention compute. A 100-token prefix costs 100 tokens of your context limit.",
+      "Adapters add serial layers and latency. At small batch sizes this is visible.",
+      "Prompt tuning is unstable on small models. It is also sensitive to the initialization and the learning rate.",
+      "Fewer trainable parameters does not mean lower training memory. Activations still dominate for long sequences.",
+      "Adapters trained on one base checkpoint do not transfer to another base. Version the base and the adapter together."
+    ]
+  },
+  "23": {
+    "short": [
+      "Online serving answers one user request in real time behind an API. Batch serving processes a large dataset offline to maximize throughput and lower cost.",
+      "LLM serving adds special problems: a growing KV cache, token-by-token decoding, and continuous batching."
+    ],
+    "picture": [
+      "A chat assistant is online serving. A user waits and watches tokens appear. A nightly job that summarizes 2 million support tickets is batch serving. Nobody waits. Cost per token matters more than latency. Providers often price batch jobs at about half the online price.",
+      "Online latency has two parts. TTFT (time to first token) is dominated by prefill, where the model reads the whole prompt in parallel. TPOT (time per output token) is dominated by decode, where it produces one token per step.",
+      "Decode is memory-bound. A 7B model in FP16 is 14 GB. A GPU with 2 TB/s memory bandwidth reads all weights in about 7 ms. So one stream cannot exceed about 140 tokens per second, whatever the FLOPs.",
+      "Batching fixes this. If 32 requests decode together, the same 14 GB read serves 32 tokens. Throughput rises almost 32 times while per-token latency rises only a little.",
+      "The KV cache stores keys and values for every past token. For Llama-2-7B it is 2 x 32 layers x 4096 x 2 bytes, about 0.5 MB per token. A 4,000-token chat takes 2 GB. Forty such chats take 80 GB.",
+      "Continuous batching (iteration-level scheduling) lets new requests join the running batch at every step. Static batching waits for the slowest request, so short answers sit idle. Continuous batching can lift throughput several times.",
+      "PagedAttention (vLLM) stores the KV cache in fixed-size blocks, like OS memory pages. This removes fragmentation. Without it, 60 to 80 percent of KV memory can be wasted on reserved but unused space.",
+      "The API layer sits in front: authentication, rate limits, request queue, streaming over server-sent events, timeouts, health checks, and autoscaling on queue depth.",
+      "Failure example: a cold start. A new replica must load 14 GB of weights and warm up. That takes 30 to 90 seconds. Autoscaling that reacts only after the queue grows will miss the traffic spike."
+    ],
+    "inside": [
+      "Prefill: the server runs the full prompt through the model once. It writes K and V for every prompt token into the cache. This step is compute-bound.",
+      "Decode: each step takes the last token, computes its Q, K, V, appends K and V to the cache, and attends over the whole cache. The step is memory-bound.",
+      "The scheduler keeps a queue of waiting requests and a set of running ones. At each step it checks free KV blocks. It admits a new request only if enough blocks exist.",
+      "When memory runs out, the scheduler preempts a request. It either swaps its blocks to CPU or drops them and recomputes later.",
+      "Streaming sends each token as it is sampled. The client sees output while decode continues. A client disconnect should cancel the request and free its blocks.",
+      "Batch serving writes results to storage, retries failed rows, and checkpoints progress. It sorts inputs by length to cut padding waste."
+    ],
+    "matters": [
+      "You must say which metric you optimize: p99 latency, throughput, or cost. They conflict.",
+      "KV cache math is a common interview question. Be ready to compute it from layers, heads, head dimension, and dtype.",
+      "Serving cost often exceeds training cost over a product's life. Good batching changes the unit economics.",
+      "It shows you know decode is bandwidth-bound, which explains quantization, GQA, and speculative decoding."
+    ],
+    "watch": [
+      "Head-of-line blocking: one 30,000-token prompt delays everyone else's prefill. Use chunked prefill or separate queues.",
+      "Unbounded queues turn overload into huge latency. Set a queue limit and return a 429 error.",
+      "KV cache out-of-memory is the most common crash. Cap max context and max concurrent sequences.",
+      "Measure p95 and p99, not the average. The tail is what users feel.",
+      "Do not benchmark with short, uniform prompts. Real traffic has mixed lengths."
+    ]
+  },
+  "24": {
+    "short": [
+      "A model format defines how weights are saved on disk. safetensors stores raw tensors safely. ONNX stores a portable compute graph. GGUF packs quantized models and metadata for llama.cpp.",
+      "The format decides loading speed, safety, portability, and which runtime can run the model."
+    ],
+    "picture": [
+      "Think of shipping furniture. safetensors is flat-pack parts with a clear label sheet. ONNX is a full instruction manual that any workshop can follow. GGUF is a compact kit with everything inside one box for a home garage.",
+      "Some classic weight files can run code when opened. A file from an unknown source can steal credentials at load time.",
+      "safetensors fixes that. The file starts with an 8-byte little-endian number giving the header length. A JSON header follows. It lists each tensor name, dtype, shape, and byte offsets. Raw bytes follow. No code runs on load.",
+      "Because offsets are known, the loader memory-maps the file. It can load one tensor without reading the rest. Large models are sharded into files like model-00001-of-00004.safetensors with an index JSON mapping names to shards.",
+      "ONNX stores a protobuf graph of operators (MatMul, Gelu, Softmax) with an opset version. onnxruntime, TensorRT, and mobile runtimes can run it without PyTorch. Protobuf has a 2 GB limit, so large weights go to external data files.",
+      "GGUF is one file with key-value metadata (architecture, context length, tokenizer, chat template) and tensors quantized in blocks. A 7B model is about 13.5 GB in FP16, about 7.2 GB in Q8_0, and about 4.1 GB in Q4_K_M.",
+      "Real example: a laptop app ships a Q4_K_M GGUF of a 7B model at 4.1 GB. It runs on a CPU with 8 GB RAM through memory mapping.",
+      "Failure example: you export a model with dynamic control flow to ONNX. The tracer freezes one branch and fixes shapes. Outputs are wrong for other input lengths."
+    ],
+    "inside": [
+      "safetensors stores per tensor: name, dtype (F16, BF16, F32), shape, and start and end byte offsets. It stores no graph and no code. The architecture must come from a separate config file.",
+      "ONNX stores nodes, edges, initializers (the weights), input and output shapes, and the opset. A runtime applies graph optimizations such as operator fusion and constant folding before running.",
+      "GGUF stores a header, a metadata table, tensor info (name, shape, quant type, offset), and aligned tensor data. Quantization is per block: for example Q4_0 groups 32 weights with one scale.",
+      "K-quants (Q4_K_M) use super-blocks of 256 weights with sub-block scales. 'M' means medium, a mix that keeps sensitive tensors at higher bit width.",
+      "Conversion steps: take a tensor-only weight file, rename tensors to the target runtime scheme, copy tokenizer data, and quantize blocks for a packed local format.",
+      "The tokenizer and chat template are not part of safetensors weights. They live in separate JSON files. GGUF embeds them."
+    ],
+    "matters": [
+      "Format choice is a deployment decision: safety, hardware target, and runtime support all depend on it.",
+      "Interviewers test whether you know why some weight formats can run code on load, and why a tensor-only format became the safe default.",
+      "You should map format to runtime: safetensors with vLLM or Transformers, ONNX with onnxruntime or TensorRT, GGUF with llama.cpp or Ollama."
+    ],
+    "watch": [
+      "Never open an untrusted classic weight file that can run code. Prefer a format that stores only tensors and a header.",
+      "ONNX export can fail or silently change behavior on unsupported operators and dynamic shapes. Compare outputs against PyTorch on several input lengths.",
+      "A GGUF with the wrong chat template produces poor answers even when the weights are correct.",
+      "Quantized formats lose precision. Evaluate the quantized model on your own task, not only on perplexity.",
+      "Mixing dtype assumptions, for example loading BF16 weights as FP16, can overflow. Check dtype in the header."
+    ]
+  },
+  "25": {
+    "short": [
+      "A language model assigns a probability to the next token given all earlier tokens. It chains these predictions to score or generate whole sequences.",
+      "Training teaches the model to give high probability to the real next token in text."
+    ],
+    "picture": [
+      "Think of phone keyboard autocomplete. You type 'See you to' and it suggests 'morrow', 'night', and 'day'. An LLM does the same at a much larger scale, with thousands of tokens of context.",
+      "Concrete example: input 'The capital of France is'. The model outputs a probability for every token in a 32,000-token vocabulary. ' Paris' may get 0.92. ' Lyon' may get 0.01. All 32,000 probabilities sum to 1.",
+      "The chain rule gives the probability of a whole sentence: $P(x_1 \\dots x_n) = \\prod_t P(x_t \\mid x_{<t})$. We multiply the per-token probabilities. In practice we add logs to avoid underflow.",
+      "Training loss is cross-entropy: the negative log probability of the true next token. At random initialization with 32,000 tokens the loss is about ln(32000) = 10.4. A well-trained 7B model reaches about 1.8 to 2.2 on general web text.",
+      "Perplexity is exp(loss). A loss of 2.0 gives perplexity 7.4. The model is as uncertain as if it chose among about 7 equally likely tokens at each step.",
+      "One training sequence of 2,048 tokens gives 2,048 training signals in one forward pass. Each position predicts the next token. Labels are the input shifted left by one.",
+      "Generation is a loop. Predict a distribution, pick a token, append it, and repeat. Greedy picks the top token. Temperature, top-k, and top-p add controlled randomness.",
+      "Failure example: greedy decoding on an open-ended prompt gets stuck in a repetition loop such as 'I think that I think that I think...'."
+    ],
+    "inside": [
+      "Input: token IDs. The model embeds them, runs transformer layers, and produces a hidden vector per position.",
+      "Output head: a matrix of size d_model x vocab (4096 x 32000 is 131M weights) turns the last hidden vector into logits, one score per token. Softmax turns logits into probabilities.",
+      "Training compares the logit distribution at each position with the true next token. The loss gradient updates all weights. Pretraining sees trillions of tokens.",
+      "Temperature divides logits before softmax. Low values sharpen the distribution. High values flatten it. Top-k keeps the k best tokens. Top-p keeps the smallest set whose probability sums to p.",
+      "Base model: trained only on next-token prediction. Instruction model: further tuned on instruction-response pairs and preference data, so it follows requests.",
+      "Teacher forcing: during training the model sees the true previous tokens, not its own earlier guesses."
+    ],
+    "matters": [
+      "Every other topic builds on this. Attention, masking, and scaling laws all serve next-token prediction.",
+      "It explains hallucination: the model optimizes for plausible continuation, not for truth.",
+      "Perplexity and loss are the standard measures. You should know their meaning and limits."
+    ],
+    "watch": [
+      "Fluent does not mean correct. A model gives high probability to plausible text even when the fact is wrong.",
+      "Exposure bias: training uses true history, but inference uses the model's own output. Errors can compound.",
+      "Perplexity depends on the tokenizer. You cannot compare perplexity between models with different vocabularies.",
+      "Low perplexity on web text does not guarantee good task accuracy.",
+      "Do not confuse a base model with a chat model. A base model may continue your question with more questions."
+    ]
+  },
+  "26": {
+    "short": [
+      "Tokenization splits text into sub-word pieces and maps each to an integer ID. An embedding table then maps each ID to a learned vector.",
+      "These vectors are the model's real input. Similar meanings end up near each other after training."
+    ],
+    "picture": [
+      "Think of Lego bricks. Common words are single big bricks. Rare words are built from smaller bricks. 'unhappiness' may become 'un', 'happi', 'ness'. No word is ever unknown, because the smallest bricks are single bytes.",
+      "BPE (byte-pair encoding) starts with bytes or characters. It counts adjacent pairs in the training text. It merges the most frequent pair into a new token. It repeats until the vocabulary reaches the target size, for example 32,000 for Llama 2 or about 128,000 for Llama 3.",
+      "The embedding table has one row per token. With 32,000 tokens and d=4096 it has 131M weights. In FP16 that is 262 MB. A lookup copies one row. It is not a matrix multiply.",
+      "Token cost is real money and real context. English text averages about 1.3 tokens per word. Hindi or Tamil text can need 3 to 10 times more tokens with an English-centered tokenizer. The same question costs more and fits less context.",
+      "Failure example: a model fails at 'How many r letters are in strawberry?'. The tokenizer shows it 'str', 'aw', 'berry'. It never sees single letters.",
+      "Another failure: the number 12345 may split as '123' and '45', while 12346 splits as '1234' and '6'. Arithmetic becomes inconsistent because digit grouping changes.",
+      "After training, related tokens have close vectors. 'king' and 'queen' sit near each other. Direction can encode relations, but modern contextual models use the table only as the first layer.",
+      "Special tokens such as BOS, EOS, and role markers control the format. A wrong special token breaks chat behavior."
+    ],
+    "inside": [
+      "Stored: a vocabulary file (token string to ID) and a merge list or a unigram score table. Also stored: the embedding matrix E of shape (vocab, d).",
+      "Encoding steps: normalize text, pre-split into pieces, apply merges in priority order, and look up IDs. Decoding joins the token strings back to text.",
+      "Byte-level BPE (GPT-2 and later) works on UTF-8 bytes, so any input can be encoded. WordPiece (BERT) uses a ## continuation marker. SentencePiece treats text as a raw stream and marks spaces with a special symbol.",
+      "Embedding gradients are sparse. A batch updates only the rows of tokens it contains. Rare tokens get few updates and stay poorly trained.",
+      "Weight tying shares the input embedding matrix with the output head. This saves 131M parameters in the example above and often helps small models.",
+      "Vocabulary size trade-off: a larger vocabulary gives shorter sequences and cheaper attention. It also makes the embedding table and output softmax bigger."
+    ],
+    "matters": [
+      "Many odd LLM failures trace to tokenization: spelling, arithmetic, and non-English quality.",
+      "Token count drives API cost and the usable context window. You must estimate it.",
+      "A tokenizer mismatch between training and serving silently ruins output. Interviewers like this bug."
+    ],
+    "watch": [
+      "Always use the exact tokenizer that ships with the checkpoint. A different one gives garbage with no error.",
+      "Whitespace and casing change tokens. 'Hello' and ' Hello' are different IDs.",
+      "Glitch tokens exist: tokens seen in tokenizer data but almost never in model training. They can trigger strange outputs.",
+      "Truncating by characters instead of tokens can cut a multi-byte character or exceed the model limit.",
+      "Chat templates add tokens. Count them in the context budget."
+    ]
+  },
+  "27": {
+    "short": [
+      "Self-attention has no sense of order by itself. Positional encoding adds order information. RoPE (rotary position embedding) rotates query and key vectors by an angle that depends on position.",
+      "With RoPE the attention score depends on the relative distance between two tokens."
+    ],
+    "picture": [
+      "'Dog bites man' and 'Man bites dog' have the same words. Without position information, attention sees the same set of tokens. The meaning is lost.",
+      "Early fix: learned absolute positions. GPT-2 stores a table of 1,024 rows, one vector per position, and adds it to the token embedding. It cannot handle position 1,025. There is no row.",
+      "Sinusoidal encoding from the original Transformer adds fixed sine and cosine waves of different frequencies. It needs no training but extrapolates poorly in practice.",
+      "RoPE treats each head vector as pairs of numbers. A head of size 128 gives 64 pairs. Each pair is rotated in its own 2D plane by angle $m \\theta_i$, where m is the token position and $\\theta_i = 10000^{-2i/d}$.",
+      "Low pairs rotate fast and capture fine local offsets. High pairs rotate slowly and capture long range. This is like a clock with a second hand, a minute hand, and an hour hand.",
+      "The key property: rotating q by position m and k by position n makes their dot product depend on m minus n. The model sees relative distance without a learned table.",
+      "Real example: Llama 2 was trained with 4K context. To serve 32K, teams scale positions down by 8, so position 32,000 acts like 4,000. This is position interpolation. A short fine-tune restores quality.",
+      "Failure example: you run a 4K-trained model at 16K with no change. Positions beyond training were never seen. Perplexity explodes and outputs turn to noise."
+    ],
+    "inside": [
+      "RoPE is applied to Q and K only. It is not added to the token embedding. V is untouched, so values carry content, not position.",
+      "Per position m, the code computes cos and sin of $m\\theta_i$ for each pair. It multiplies each (q_{2i}, q_{2i+1}) pair by the 2x2 rotation matrix. It does the same for K.",
+      "Cached keys in the KV cache are stored already rotated. Each new token rotates with its own absolute position, and relative offsets still come out right.",
+      "The base 10000 sets the wavelength range. Llama 3 uses base 500000 to support longer context. Changing the base changes every rotation.",
+      "Extension methods: position interpolation squeezes all positions. NTK-aware scaling changes the base so high frequencies keep resolution. YaRN mixes both per frequency band and adds an attention temperature.",
+      "ALiBi is another option. It adds a linear distance penalty to attention scores and has no learned or rotated vectors."
+    ],
+    "matters": [
+      "RoPE is the standard in Llama, Mistral, Qwen, and many others. Interviewers expect you to explain it.",
+      "Context extension is a hot practical topic. You should explain why naive extension fails.",
+      "It links to KV cache, long-context cost, and lost-in-the-middle behavior."
+    ],
+    "watch": [
+      "A mismatch in RoPE layout, interleaved pairs versus first-half/second-half pairs, gives garbage output with a loaded checkpoint.",
+      "Wrong rope base or scaling in a converted model quietly reduces long-context quality.",
+      "A long advertised context window does not mean good use of it. Accuracy often drops for facts in the middle.",
+      "Interpolation reduces resolution for nearby tokens. Some fine-tuning is needed.",
+      "Absolute learned positions cannot extrapolate. Do not claim they can."
+    ]
+  },
+  "28": {
+    "short": [
+      "Self-attention lets each token build a new vector as a weighted mix of all visible tokens. Each token makes a query, a key, and a value. The query is compared with all keys to get weights, and those weights mix the values.",
+      "The formula is $\\text{softmax}(QK^T/\\sqrt{d_k})V$."
+    ],
+    "picture": [
+      "Think of a library. Your query is what you search for. Each book spine is a key. The book content is the value. You score every spine, pick the best matches, and blend their content into one answer.",
+      "Sentence: 'The animal did not cross the street because it was too tired.' The token 'it' makes a query. The key for 'animal' scores high against it. The new vector for 'it' then carries much of 'animal'.",
+      "Shapes: X has n tokens and d columns. Three learned matrices $W_Q$, $W_K$, $W_V$ (each d x d_k) produce Q, K, V. With n=4,096 and d_k=128, Q is 4,096 x 128.",
+      "The score matrix is $QK^T$, size n x n. For n=4,096 that is 16.8M scores per head. In FP16 that is 33 MB per head. With 32 heads, one layer would need about 1 GB if stored in full.",
+      "Why divide by $\\sqrt{d_k}$: a dot product of d_k unit-variance numbers has variance d_k. At d_k=128 the std is about 11. Softmax on such large values becomes almost one-hot, and gradients vanish. Dividing restores variance 1.",
+      "Softmax per row turns scores into weights that sum to 1. The output row is the weighted sum of V rows. Each output is a vector of size d_k.",
+      "Cost grows as n squared. Doubling the context makes score computation and memory four times bigger. This is the main reason long context is expensive.",
+      "FlashAttention computes the same result in tiles that fit in fast on-chip SRAM. It never writes the full n x n matrix to GPU memory. It is faster and uses linear memory.",
+      "Failure example: padding tokens are not masked. A short sentence in a batch pays attention to pad vectors. Outputs shift depending on how much padding the batch has."
+    ],
+    "inside": [
+      "Learned parameters: $W_Q$, $W_K$, $W_V$, and an output projection $W_O$. Each is d x d in a standard layer. For d=4096, four matrices give about 67M weights per layer.",
+      "Step 1: multiply X by the three matrices. Step 2: compute scores QK^T and scale. Step 3: apply the mask. Step 4: softmax each row. Step 5: multiply by V. Step 6: apply $W_O$.",
+      "Query and key live in the same space so their dot product is meaningful. Value can carry different information. A token can be matched by one feature and contribute another.",
+      "Softmax is computed in FP32 or with a running max trick to avoid overflow. Subtracting the row maximum does not change the result.",
+      "In decoding, past K and V are cached. Only the new token computes its Q, K, V. Each step costs O(n) per head instead of O(n squared).",
+      "Attention weights are not a full explanation of model decisions. They show mixing, not causal importance."
+    ],
+    "matters": [
+      "This is the core question in transformer interviews. Be ready to write the shapes by hand.",
+      "It explains the n squared cost, which drives FlashAttention, sparse attention, GQA, and KV cache design.",
+      "It supports follow-ups on masking, multi-head attention, and numerical stability."
+    ],
+    "watch": [
+      "Forgetting the scale factor gives saturated softmax and training that stalls.",
+      "Forgetting the padding or causal mask leaks information or adds noise.",
+      "FP16 scores can overflow. Use a stable softmax and BF16 or FP32 accumulation.",
+      "Models often put large weight on the first token as an 'attention sink'. This is normal. Dropping it in long-context streaming breaks quality.",
+      "Do not say attention is O(n) in the KV-cached decode loop for total generation. Total cost over n steps is still O(n squared)."
+    ]
+  },
+  "29": {
+    "short": [
+      "Multi-head attention runs several smaller attentions in parallel. Each head has its own Q, K, V projections. The outputs are concatenated and mixed by an output matrix.",
+      "Different heads can track different relations at the same time, at the same total parameter cost."
+    ],
+    "picture": [
+      "A reader of a legal contract tracks several things at once: who signs, which dates apply, and which clauses refer to others. One head cannot hold all of these in one set of weights. Several heads can split the job.",
+      "Llama-2-7B: d_model=4096 with 32 heads. Each head has dimension 128, so 32 x 128 = 4096. Each head attends over the same tokens but in its own 128-dimensional subspace.",
+      "Parameter count does not grow. One big attention uses $W_Q$ of size 4096 x 4096. Multi-head uses 32 slices of size 4096 x 128. The total is the same 16.8M weights per matrix.",
+      "Trained heads often specialize. Some track the previous token. Some link a verb to its subject. Some copy earlier tokens in repeated patterns (induction heads). Many are redundant, and some can be pruned with little loss.",
+      "Memory problem: every head has its own K and V in the cache. For Llama-2-7B this is about 0.5 MB per token. Large batches of long chats fill the GPU.",
+      "MQA (multi-query attention) uses one K and V head shared by all query heads. The cache shrinks by 32 times, with some quality loss.",
+      "GQA (grouped-query attention) is in the middle. Llama-2-70B uses 64 query heads and 8 KV heads. Each KV head serves 8 query heads. The cache is 8 times smaller than full multi-head with little quality loss.",
+      "Failure example: a team converts an MHA checkpoint to GQA by averaging KV heads and does not fine-tune. Quality drops. The paper recipe mean-pools heads and then trains for about 5 percent of the original compute."
+    ],
+    "inside": [
+      "Computation: project X to Q, K, V of size n x d. Reshape to (heads, n, d_head). Run attention per head. Reshape back to n x d. Multiply by $W_O$.",
+      "Head outputs are concatenated, not averaged. $W_O$ then mixes information across heads. Without it, heads would stay separate.",
+      "Attention scores are computed per head. The score tensor has shape (batch, heads, n, n). This tensor is why long context is memory-heavy without FlashAttention.",
+      "With GQA, K and V projection matrices are smaller: d x (kv_heads x d_head). At serve time the KV heads are broadcast to their query group.",
+      "Tensor parallelism splits heads across GPUs. Each GPU holds a subset of heads, and an all-reduce after $W_O$ combines the result. The head count, or KV head count, must divide evenly by the GPU count.",
+      "Each head works on a smaller dimension. Per-head cost is lower, so total compute is close to single-head attention at full width."
+    ],
+    "matters": [
+      "Interviewers ask why multiple heads help and what MQA and GQA change. Give the cache-size numbers.",
+      "GQA is standard in modern open models, so serving cost questions lead here.",
+      "It tests understanding of reshape and tensor shapes, a common coding screen."
+    ],
+    "watch": [
+      "A wrong reshape or transpose mixes heads or tokens. Shapes still match, so no error appears. Test with a tiny known example.",
+      "Too small a head dimension (below 64) limits what each head can represent.",
+      "Do not claim each head learns a clean human-readable role. Many heads are redundant or unclear.",
+      "MQA and GQA reduce KV memory, not the weights of the FFN. Total model size stays mostly the same.",
+      "Tensor-parallel sharding fails or wastes memory if heads do not divide by GPU count."
+    ]
+  },
+  "30": {
+    "short": [
+      "A transformer block has an attention sub-layer and a feed-forward network (FFN) sub-layer. Each is wrapped with normalization and a residual (skip) connection. The model stacks dozens of these blocks.",
+      "Attention mixes information across tokens. The FFN transforms each token on its own."
+    ],
+    "picture": [
+      "Think of an assembly line with a conveyor belt that runs the full length. Each station reads the belt, computes a small change, and adds it back. The belt is the residual stream. No station replaces the product. Each station adds to it.",
+      "Pre-LN layout: $x = x + \\text{Attn}(\\text{Norm}(x))$, then $x = x + \\text{FFN}(\\text{Norm}(x))$. A final norm follows the last block.",
+      "Llama-7B numbers: d=4096, 32 layers. Attention has 4 x 4096 x 4096, about 67M weights. The SwiGLU FFN has three matrices of 4096 x 11008, about 135M weights. So the FFN holds about two thirds of block parameters.",
+      "Total: 32 blocks x about 202M = 6.5B. Add the 131M input embedding and the 131M output head, and you reach about 6.7B.",
+      "A classic FFN expands d to 4d, applies GELU, and projects back to d. Llama uses SwiGLU: two parallel up-projections, one gated by SiLU and multiplied elementwise, then a down-projection. Hidden size is about 8/3 d to keep the parameter count similar.",
+      "Researchers view the FFN as a key-value memory. Each hidden unit matches a pattern and writes a vector back to the stream. Many facts appear to be stored in FFN weights.",
+      "Residual connections give gradients a direct path through all 32 layers. Without them, a deep stack trains badly or not at all.",
+      "Failure example: a post-LN model with 48 layers and no learning rate warmup diverges in the first 1,000 steps. The loss jumps to NaN. Pre-LN with warmup trains stably."
+    ],
+    "inside": [
+      "LayerNorm subtracts the mean over the feature dimension, divides by the standard deviation, then scales and shifts with learned vectors of size d. RMSNorm skips the mean and shift. It divides by the root mean square and keeps only a scale. It is cheaper and works as well.",
+      "Normalization is per token, not per batch. So it works the same for batch size 1 at inference.",
+      "Pre-LN puts the norm before each sub-layer, inside the residual branch. The residual path stays clean. Post-LN puts the norm after the add. The original Transformer used post-LN, which needs careful warmup at depth.",
+      "Attention reads from other tokens and writes a vector. The FFN reads only its own token and writes a vector. Both writes add to the residual stream.",
+      "Dropout, if used, sits on branch outputs before the add. Large pretraining runs usually use none.",
+      "Activation memory per layer includes the normalized input, Q, K, V, the attention output, and FFN hidden states. Gradient checkpointing stores only block inputs and recomputes the rest."
+    ],
+    "matters": [
+      "You should draw a block from memory and give parameter counts. This is a standard question.",
+      "It explains why quantization is hard: outlier channels in the residual stream.",
+      "It links to MoE, which replaces only the FFN."
+    ],
+    "watch": [
+      "Missing the final norm before the output head hurts quality badly.",
+      "Post-LN at depth without warmup is unstable. Prefer pre-LN for new models.",
+      "FP16 can overflow in the residual stream when a few channels have very large activations. BF16 has a wider range.",
+      "Do not confuse LayerNorm with BatchNorm. BatchNorm depends on batch statistics and breaks for small or variable batches.",
+      "Counting parameters: do not forget the gated third matrix in SwiGLU."
+    ]
+  },
+  "31": {
+    "short": [
+      "Encoder models read the full text in both directions to understand it. Decoder models generate text left to right. Encoder-decoder models read an input with an encoder and write a new output with a decoder.",
+      "The choice depends on the task: understanding, generation, or sequence-to-sequence transformation."
+    ],
+    "picture": [
+      "Sorting 10,000 support tickets into 12 categories is an understanding task. A small encoder like BERT-base (110M parameters) does it in a few milliseconds per ticket. A 70B decoder would work but cost far more.",
+      "Writing a reply to the ticket is generation. A decoder-only model such as Llama reads the prompt and writes the reply token by token.",
+      "Translating the ticket from German to English is sequence-to-sequence. T5 or Marian reads the German text with an encoder and writes English with a decoder.",
+      "BERT is trained with masked language modeling. It hides about 15 percent of tokens and predicts them using context on both sides. Every token sees every other token. Maximum length is 512 tokens.",
+      "A decoder-only model uses a causal mask. Token t sees only tokens up to t. It trains on next-token prediction. Every position gives a training signal.",
+      "In an encoder-decoder, the decoder has two attention parts. Self-attention is causal over its own outputs. Cross-attention takes queries from the decoder and keys and values from the encoder output.",
+      "Why decoder-only dominates now: one simple objective, easy scaling, in-context learning, and one KV cache. A prompt can describe almost any task.",
+      "Failure example: an embedding pipeline pools the [CLS] vector from a model trained for mean pooling. Retrieval quality falls sharply with no error."
+    ],
+    "inside": [
+      "Encoder-only: no causal mask. Output is one vector per token. For classification, use the [CLS] vector or a pooled average. For embeddings, use the pooling method the model was trained with.",
+      "Decoder-only: causal mask. Output at each position is a next-token distribution. The KV cache makes generation fast.",
+      "Encoder-decoder: the encoder runs once on the input. Its output stays fixed. Each decoder step uses it as K and V in cross-attention. The cache holds decoder self-attention K and V, plus the fixed encoder K and V per layer.",
+      "Cross-attention cost per step is proportional to the input length. A 4,000-token document adds 4,000 key comparisons for each output token.",
+      "Prefix-LM is a hybrid. The prompt part attends bidirectionally. The generated part is causal.",
+      "Fine-tuning data differs: encoders use labeled pairs. Decoders use text with a loss mask. Seq2seq uses input-output pairs."
+    ],
+    "matters": [
+      "Interviewers ask which architecture fits which task and why. Use cost and latency in the answer.",
+      "Retrieval and reranking use encoders. Chat uses decoders. Knowing this shows system design skill.",
+      "It sets up the causal mask topic."
+    ],
+    "watch": [
+      "Encoders cannot generate fluent text. Do not pick BERT for open-ended generation.",
+      "BERT-style models truncate at 512 tokens. A long document needs chunking.",
+      "Do not use a large decoder for simple classification if an encoder is accurate enough. It wastes money.",
+      "A pooling mismatch silently degrades embeddings.",
+      "Cross-attention models need to hold both encoder output and decoder cache in memory."
+    ]
+  },
+  "32": {
+    "short": [
+      "A causal mask stops each token from attending to later tokens. It adds minus infinity to those attention scores before softmax. The weight on future tokens becomes exactly zero.",
+      "This lets the model train on a whole sentence in parallel while still learning left-to-right prediction."
+    ],
+    "picture": [
+      "Think of an exam where each answer page is glued shut until you finish the question before it. You cannot peek at what comes next. The causal mask is the glue.",
+      "Training example: the sentence has 5 tokens. The mask is a 5 x 5 lower triangle. Row 3 can see positions 1, 2, and 3. In total 15 of 25 cells are visible. For n tokens, n(n+1)/2 cells are visible.",
+      "Without the mask, the model that predicts token 4 can see token 4 itself in its input. It copies the answer. Training loss drops near zero, but generation produces garbage, because future tokens do not exist at inference.",
+      "With the mask, one forward pass on a 2,048-token sequence gives 2,048 next-token predictions at once. This is the key training speedup over step-by-step RNN training.",
+      "At inference, the mask is implicit. The KV cache holds only past tokens. A new token attends to all of them. No future tokens exist, so nothing needs masking for the single new row.",
+      "During prefill the full prompt runs in parallel, so the causal mask is applied there. For a 1,000-token prompt, the mask hides 499,500 upper-triangle cells.",
+      "Failure example: batch generation with right padding. The model appends new tokens after pad tokens, and positions are wrong. Left padding with a correct attention mask fixes it."
+    ],
+    "inside": [
+      "The mask is an n x n matrix. Cells above the diagonal hold a very negative number (minus infinity or the dtype minimum). Cells on and below the diagonal hold 0.",
+      "It is added to the score matrix $QK^T/\\sqrt{d_k}$ before softmax. Since $e^{-\\infty}=0$, masked cells get zero weight. The row sum is taken only over allowed cells.",
+      "A padding mask is combined with the causal mask. A cell is allowed only if both permit it. Padding keys are blocked for all queries.",
+      "Labels are the input shifted by one position. The mask and the label shift do two different jobs. The mask hides inputs. The shift sets the target.",
+      "FlashAttention takes a causal flag and skips fully masked tiles. This saves about half the compute for long sequences.",
+      "Sliding window attention (Mistral) adds a second limit. Each token sees only the last W tokens, for example 4,096. Memory per layer then stays bounded."
+    ],
+    "matters": [
+      "Interviewers use it to test if you understand training versus inference for decoders.",
+      "It explains why generation is sequential but training is parallel.",
+      "Off-by-one mask bugs are common in real code, so knowing the symptoms is useful."
+    ],
+    "watch": [
+      "Off-by-one leak: allowing the diagonal plus one makes training loss fall to near zero and generation fail. Suspiciously low loss is a red flag.",
+      "A row that is fully masked gives NaN after softmax, because all weights are zero. This happens with all-padding rows. Use a large negative finite value or handle the row.",
+      "In FP16, minus infinity plus other values can produce NaN. Use the dtype minimum.",
+      "Left versus right padding matters for batched generation. Check the tokenizer padding side.",
+      "Do not mix up the attention mask for padding with the causal mask. They are different."
+    ]
+  },
+  "33": {
+    "short": [
+      "Scaling laws say that language model loss falls as a smooth power law in parameters, data, and compute. This makes the results of large training runs predictable from small ones.",
+      "The key lesson from Chinchilla is that model size and data must grow together."
+    ],
+    "picture": [
+      "Plot loss against training compute on log-log axes. The curve is close to a straight line. Teams train many small models, fit the line, and predict the loss of a model 100 times larger before they spend the money.",
+      "Kaplan et al. (2020) reported $L \\propto N^{-0.076}$ for parameters and $L \\propto D^{-0.095}$ for data. Doubling the parameters lowers loss by only a few percent, but the gain is steady.",
+      "Training compute is about $C \\approx 6ND$ FLOPs, where N is parameters and D is training tokens. A 7B model on 1T tokens costs 6 x 7e9 x 1e12 = 4.2e22 FLOPs.",
+      "Chinchilla (2022) found that earlier models were undertrained. A 70B model on 1.4T tokens beat Gopher at 280B on 300B tokens, with the same compute. The compute-optimal ratio is about 20 tokens per parameter.",
+      "Llama 3 8B trained on about 15T tokens. That is almost 1,900 tokens per parameter. It is far past compute-optimal, but deliberate. A small model trained long is cheap to serve for years.",
+      "Real decision: a team has a fixed budget. A 70B model costs about 10 times more to serve than a 7B model for every request. If inference volume is high, training a smaller model on more data costs less in total.",
+      "Failure example: a team extrapolates a loss curve to predict a coding benchmark score. Loss is smooth, but benchmark accuracy can jump or stall. Loss and task skill are not the same."
+    ],
+    "inside": [
+      "The fit: run many training runs with different N and D. Record the final validation loss. Fit a function like $L = E + A/N^{\\alpha} + B/D^{\\beta}$. E is the irreducible loss from the data's own noise.",
+      "The fit needs a held-out set from the same distribution. Loss on a different set follows a different curve.",
+      "Hyperparameters matter. Learning rate and batch size must be tuned for each scale. A fixed learning rate can bend the curve and hide the true trend.",
+      "Data quality changes the constants. Filtered and deduplicated data gives lower loss at the same token count.",
+      "Repeating data has limits. A few epochs behave almost like new data. Many epochs give diminishing returns and risk memorization.",
+      "Public text on the web is finite. The 'data wall' pushes work toward synthetic data and better filtering."
+    ],
+    "matters": [
+      "It justifies why labs invest in bigger runs and how they plan budgets.",
+      "It frames the choice between a big model and a small, long-trained model, which depends on inference volume.",
+      "Interviewers test whether you know Chinchilla's 20 tokens per parameter rule and its limits."
+    ],
+    "watch": [
+      "Do not extrapolate far beyond the fitted range. Trends can bend.",
+      "Loss improvement is not task improvement. Evaluate on the task you care about.",
+      "Compute-optimal for training is not cost-optimal over the product life. Inference cost changes the answer.",
+      "Apparent emergent abilities can result from a harsh metric such as exact match. Smooth metrics often show smooth gains.",
+      "Poor data or a bad learning rate can make a large model worse than a small, clean run."
+    ]
+  },
+  "34": {
+    "short": [
+      "Mixture of Experts (MoE) replaces one FFN with many expert FFNs and a router. The router sends each token to only a few experts. The model gains capacity without a matching rise in compute per token.",
+      "Total parameters are large, but active parameters per token are small."
+    ],
+    "picture": [
+      "Think of a hospital. A triage nurse (the router) sends each patient to two of eight specialists. The hospital has many experts, but each patient uses only two. Capacity is large and the cost per patient stays low.",
+      "Mixtral 8x7B: each layer has 8 experts and picks the top 2 per token. Total parameters are 46.7B. Active parameters per token are about 12.9B. It runs at the cost of a 13B model but performs close to much larger dense models.",
+      "DeepSeek-V3 is far bigger: 671B total, 37B active. It uses 256 routed experts plus 1 shared expert per MoE layer and picks 8 routed experts per token.",
+      "Memory is the catch. All experts must sit in GPU memory, because any token may need any expert. Mixtral in FP16 needs about 93 GB for weights alone. That is two 80 GB GPUs.",
+      "The router is a small linear layer. For d=4096 and 8 experts it has 4096 x 8 = 32,768 weights. It scores each expert, takes the top 2, and renormalizes those two scores into gate weights.",
+      "Output for a token is the gate-weighted sum of its chosen experts' outputs. The other 6 experts do no work for that token.",
+      "Failure example: expert collapse. Early in training the router sends most tokens to one or two experts. These improve faster and get even more tokens. Other experts stay untrained and the model acts smaller than it is.",
+      "At batch size 1, a decode step touches only 2 experts per layer and reads little memory. At batch size 64 almost all experts are hit, so the whole weight set is read. The bandwidth advantage fades under large batches."
+    ],
+    "inside": [
+      "Stored per MoE layer: attention weights (shared by all tokens), router weights, and E independent FFN weight sets. Attention is usually dense.",
+      "Router step: logits = x times W_router. Select top-k. Apply softmax over the selected logits to get gates. Dispatch the token's hidden vector to those experts.",
+      "Load-balancing auxiliary loss: it penalizes uneven token share across experts. It pushes the router to spread tokens. DeepSeek-V3 instead adds a bias per expert and adjusts it during training, with no auxiliary loss.",
+      "Capacity factor: each expert accepts at most a fixed number of tokens per batch. Extra tokens are dropped or passed through the residual path. This keeps tensor shapes static.",
+      "Expert parallelism places different experts on different GPUs. Tokens move across GPUs in an all-to-all step before and after the expert computation. Network bandwidth becomes a bottleneck.",
+      "Shared experts process every token and hold common knowledge. Routed experts specialize."
+    ],
+    "matters": [
+      "Many top open and closed models use MoE, so you will be asked about it.",
+      "It shows the difference between total and active parameters, and between compute cost and memory cost.",
+      "It leads into serving questions on expert parallelism and batching."
+    ],
+    "watch": [
+      "MoE saves FLOPs, not memory. Do not say it makes the model fit on a smaller GPU.",
+      "Load imbalance causes straggler GPUs. The slowest expert sets the step time.",
+      "Fine-tuning MoE can be unstable. Routers may collapse on a small dataset.",
+      "All-to-all communication can dominate latency on slow interconnects.",
+      "Experts are not clean topic specialists. Studies often find them tied to syntax or token type more than subject."
+    ]
+  },
+  "35": {
+    "short": [
+      "Start with prompting. Add RAG when the model needs fresh or private knowledge. Fine-tune when you need a consistent style, format, or behavior.",
+      "Each method fixes a different problem, and they combine well."
+    ],
+    "picture": [
+      "A support bot must answer from policies that change every week. This is a knowledge problem. RAG fits, because you update the document index and not the model.",
+      "A pipeline needs strict JSON output with 14 fields on every call. This is a behavior problem. Prompting with schema and examples may reach 90 percent validity. Fine-tuning on 5,000 examples can reach above 99 percent.",
+      "A prototype needs a result by Friday. Prompting needs zero training and has instant iteration. You change the text and run again.",
+      "Few-shot cost: 5 examples of 200 tokens add 1,000 tokens to every call. At 1M calls per day that is 1B extra input tokens per day. Fine-tuning moves those examples into the weights and removes this cost.",
+      "RAG cost: retrieval adds 50 to 200 ms and adds 2 to 5 chunks of about 500 tokens to each prompt. Indexing is a one-time and incremental cost.",
+      "Fine-tuning cost: a LoRA run on 5,000 examples takes roughly an hour on one GPU. The real cost is data curation, evaluation, and keeping the model current.",
+      "Fine-tuning is poor at adding many new facts. The model may learn the style of the facts but still hallucinate details. RAG gives sources that you can show and verify.",
+      "Failure example: a team fine-tunes on last quarter's price list. Prices change. The model keeps confident old prices. A retrieval lookup would have been correct."
+    ],
+    "inside": [
+      "Prompting changes only the input tokens. No weights change. The model uses in-context learning from the instructions and examples within the context window.",
+      "RAG changes the input too, with retrieved text. Knowledge lives in an external index. Access control, freshness, and citations are possible.",
+      "Fine-tuning changes weights, usually through LoRA. Behavior lives inside the model. It cannot be edited per user or per day.",
+      "Decision order: write a baseline prompt and an evaluation set. If failures are about missing facts, add RAG. If failures are about format or tone after good prompting, fine-tune. Re-evaluate after each step.",
+      "Combined setup: a fine-tuned model that follows citation format and refuses when evidence is missing, plus RAG for the facts.",
+      "Always keep an evaluation set of 50 to 200 real cases. Without it you cannot tell if a change helped."
+    ],
+    "matters": [
+      "This is the most common applied-LLM design question. Give a decision framework, not a favorite.",
+      "It shows cost thinking: tokens per call, latency, training effort, and maintenance.",
+      "It tests knowledge of what fine-tuning can and cannot do."
+    ],
+    "watch": [
+      "Do not fine-tune to inject facts that change. Use RAG.",
+      "RAG does not fix tone or output format reliably. Prompting or fine-tuning does.",
+      "Fine-tuning can cause forgetting of general skills. Test on a general benchmark too.",
+      "Long prompts raise cost and can hide key instructions. Test shorter versions.",
+      "Skipping the baseline: teams often fine-tune before they try a good prompt."
+    ]
+  },
+  "36": {
+    "short": [
+      "An embedding model turns text into a vector so that similar meaning gives nearby vectors. A vector database stores these vectors and finds the closest ones to a query vector.",
+      "Approximate nearest neighbor (ANN) indexes make this fast at millions of vectors."
+    ],
+    "picture": [
+      "A user types 'laptop won't turn on'. A keyword search misses a page titled 'Device fails to power up'. An embedding search finds it because the two phrases map to nearby vectors.",
+      "Typical sizes: MiniLM gives 384 dimensions. BGE-base gives 768. OpenAI text-embedding-3-small gives 1,536. Storage is vectors x dimensions x 4 bytes in FP32.",
+      "One million chunks at 768 dimensions in FP32 takes 3 GB. At 1,536 dimensions it takes 6 GB. At 100M chunks the 768-dimension index takes 300 GB, so compression matters.",
+      "Cosine similarity compares direction: $\\cos = a \\cdot b / (|a||b|)$. If vectors are normalized to length 1, cosine equals the dot product. Most systems normalize at index time.",
+      "Exact search compares the query with every vector. For 1M vectors of 768 dimensions that is 768M multiply-adds per query. This is tens of milliseconds on a CPU, but too slow at 100M vectors.",
+      "HNSW builds a layered graph. A query enters at the top layer, hops to closer neighbors, and descends. It often reaches 95 to 99 percent recall with a few milliseconds of latency.",
+      "IVF clusters vectors into nlist groups. A query checks only the nprobe closest clusters. PQ (product quantization) splits a vector into parts and stores codes. A 768-dimension FP32 vector (3,072 bytes) can shrink to 96 bytes, which is 32 times smaller.",
+      "Failure example: a team upgrades the embedding model for new documents but keeps the old index for old documents. Vectors from two models live in different spaces. Search results turn random."
+    ],
+    "inside": [
+      "Stored per item: the vector, an ID, the original text or a pointer to it, and metadata such as source, date, and access level.",
+      "At query time: embed the query with the same model. Optionally apply a metadata filter. Search the index for the top-k neighbors. Return IDs, scores, and text.",
+      "HNSW parameters: M is the number of links per node, often 16. efConstruction controls build quality. efSearch controls query-time breadth. A higher efSearch gives higher recall and higher latency.",
+      "IVF parameters: nlist, often near the square root of N. nprobe sets how many clusters to scan. Higher nprobe gives better recall and slower queries.",
+      "Some embedding models need prefixes, such as 'query:' and 'passage:' for E5. The model was trained with them. Without them quality drops.",
+      "Hybrid search combines BM25 keyword scores with vector scores. Reciprocal rank fusion merges the two ranked lists. It helps with IDs, names, and rare terms."
+    ],
+    "matters": [
+      "Vector search is the retrieval core of RAG. Interviewers expect you to discuss index types and trade-offs.",
+      "Memory and recall-latency trade-offs decide cost at scale.",
+      "Model choice and versioning affect long-term maintenance."
+    ],
+    "watch": [
+      "Never mix embedding models in one index, and never change the model without re-embedding everything.",
+      "Metric mismatch: if the model was trained for cosine, normalize vectors or use cosine distance.",
+      "Embeddings handle exact strings, part numbers, and numbers poorly. Add keyword search.",
+      "Strict metadata filters can cut ANN recall because the graph search skips filtered nodes. Test filtered recall.",
+      "Check recall on your own queries with exact search as ground truth. Do not trust default settings."
+    ]
+  },
+  "37": {
+    "short": [
+      "Chunking splits documents into pieces that a retriever can find. Chunk size and boundaries set the balance between complete context and precise retrieval.",
+      "Good chunks hold one coherent idea and carry enough context to stand alone."
+    ],
+    "picture": [
+      "Imagine a 100-page equipment manual cut into pieces. If you cut every page in half at random, a safety warning may land in one piece and its procedure in another. The model sees only half the story.",
+      "Numbers: a 60,000-word manual is about 80,000 tokens. With 400-token chunks and 50 tokens overlap, you get about 230 chunks. With 100-token chunks you get about 800 chunks. With 2,000-token chunks you get about 40.",
+      "Large chunks mix many topics in one vector. The embedding becomes an average that matches no query well. They also waste prompt space on irrelevant text.",
+      "Small chunks give precise matches but lose context. A 60-token chunk that says 'It must be replaced every 6 months' no longer says what 'it' is.",
+      "Fixed-size chunking cuts at a token count. It is simple but ignores structure. Recursive chunking tries paragraph breaks first, then sentences, then words. Structure-aware chunking uses headings, tables, and code blocks.",
+      "Parent-child chunking indexes small chunks for precise search, then returns the larger parent section to the model. This improves both precision and context.",
+      "Contextual chunking prepends a short header to each chunk, such as the document title and section path. 'Pump P-200 > Maintenance > Seals' makes the chunk clear on its own.",
+      "Failure example: the embedding model has a 512-token limit. A 900-token chunk is silently truncated for embedding. The index never saw the second half, so questions about it fail."
+    ],
+    "inside": [
+      "Stored per chunk: text, embedding, document ID, position, section path, page number, and timestamps. Metadata lets you filter, cite, and rebuild the neighbors.",
+      "Overlap of 10 to 20 percent repeats the end of one chunk at the start of the next. It protects ideas that cross a boundary. It also adds duplicates and index size.",
+      "Semantic chunking embeds sentences and cuts where similarity between neighbors drops. It costs extra embedding calls and gives uneven sizes. Gains over recursive chunking are often small.",
+      "Tables should stay whole or be converted row by row with the header repeated. A row without its column names has no meaning.",
+      "Tokens should be counted with the embedding model's tokenizer, not by characters or words.",
+      "Chunk size is tuned by experiment. Build 3 or 4 variants, run your real questions, and compare recall@k."
+    ],
+    "matters": [
+      "Chunking often has more effect on RAG quality than the choice of vector database.",
+      "It is cheap to change and easy to test, so good engineers tune it first.",
+      "It ties to parsing, embedding limits, and prompt budget."
+    ],
+    "watch": [
+      "Splitting tables, lists, or code in the middle destroys meaning.",
+      "Pronouns and references to 'above' or 'Section 4' lose their target when chunks are alone.",
+      "Silent truncation by the embedding model hides text from search.",
+      "Overlap duplicates can fill the top-k with near-identical chunks. Deduplicate or use MMR (maximal marginal relevance).",
+      "Do not use one size for all document types. FAQs, contracts, and code need different strategies."
+    ]
+  },
+  "38": {
+    "short": [
+      "RAG (retrieval-augmented generation) finds relevant document chunks for a question and adds them to the prompt. The LLM then answers using that evidence.",
+      "It has an offline indexing path and an online query path."
+    ],
+    "picture": [
+      "An HR assistant answers 'How many days of parental leave do I get?'. It searches the policy handbook, finds the leave section, and answers with a citation. The base model was never trained on this company's handbook.",
+      "Offline path: load files, parse and run OCR, clean, chunk, embed, and store vectors with metadata. This runs when documents change.",
+      "Online path: rewrite the query, embed it, retrieve candidates, rerank, build the prompt, generate, and check the answer.",
+      "Typical flow with numbers: retrieve the top 50 by hybrid search. A cross-encoder reranker scores each query-chunk pair and keeps the best 5. Five chunks of 400 tokens add 2,000 tokens to the prompt.",
+      "Latency budget example: query embedding 20 ms, vector search 30 ms, reranking 50 pairs about 150 to 300 ms, LLM first token about 400 ms. The user sees output after roughly one second.",
+      "Why rerank: the first-stage embedding compares two separate vectors. A cross-encoder reads query and chunk together, so it judges relevance better. It is too slow to run on millions of chunks, so it runs on the shortlist.",
+      "The prompt tells the model to answer only from the context, to cite chunk IDs, and to say 'not found' if the context lacks the answer.",
+      "Failure example: the gold chunk ranks 7th. The system passes only the top 5. The answer is wrong even though search 'found' it."
+    ],
+    "inside": [
+      "Index record: chunk text, vector, document ID, page, section, ACL (who may read it), and update time.",
+      "Query rewrite: an LLM turns 'and what about for contractors?' into a standalone question using chat history. Otherwise retrieval sees an unclear fragment.",
+      "Retrieval: dense vector search plus BM25. Merge with reciprocal rank fusion. Apply metadata and permission filters before returning results.",
+      "Prompt assembly: system rules, retrieved chunks with IDs and source names, the question, and output format. The total must fit the context limit with room for the answer.",
+      "Generation then validation: check that each cited ID exists and that quoted text appears in the chunk.",
+      "Evaluation splits by stage. Retrieval: recall@k and MRR against labeled gold chunks. Generation: faithfulness (is each claim supported) and answer relevance."
+    ],
+    "matters": [
+      "RAG is the most common production LLM pattern. Expect a design question on it.",
+      "Stage-level metrics let you find which part to fix. End-to-end accuracy alone does not.",
+      "Permissions and freshness are real-world requirements that candidates often forget."
+    ],
+    "watch": [
+      "Permission leaks: if the ACL filter is missing, the bot may quote a document the user must not see.",
+      "Stale index: documents change but the index does not. Set up incremental updates and deletion.",
+      "No abstention path: without a 'not found' rule, the model invents an answer when retrieval fails.",
+      "Prompt injection: retrieved text can contain instructions. Treat it as data, not commands.",
+      "Models often use the start and end of the context best. Important evidence in the middle can be missed."
+    ]
+  },
+  "39": {
+    "short": [
+      "Graph RAG builds a knowledge graph of entities and relations from documents. It retrieves by following links in that graph. This helps with multi-hop and whole-corpus questions that plain chunk search misses.",
+      "It costs much more to build, so use it only when relations matter."
+    ],
+    "picture": [
+      "Question: 'Which suppliers of the pump hit by the recall also supply the valve in Plant B?' No single chunk holds the answer. It needs a chain: recall to pump, pump to supplier, supplier to valve, valve to plant. Vector search returns pieces. A graph follows the chain.",
+      "Build step: an LLM reads each chunk and extracts triples such as (Supplier Acme, supplies, Pump P-200). Entities become nodes. Relations become edges.",
+      "Microsoft's GraphRAG also runs community detection (Leiden algorithm) to group tightly linked nodes. An LLM writes a summary for each community, at several levels.",
+      "Local search: find the entities in the question, take their neighbors and linked chunks, and answer from that small subgraph. Good for specific questions.",
+      "Global search: collect community summaries and combine them. Good for 'What are the main themes across all reports?', which no single chunk answers.",
+      "Cost example: a 1M-token corpus split into 600-token chunks gives about 1,700 extraction calls, often with extra passes to catch missed entities. Plain RAG needs only cheap embedding calls. Graph indexing can cost 10 to 100 times more.",
+      "Failure example: the extraction treats 'IBM' and 'International Business Machines' as two nodes. The path through the graph breaks, and the multi-hop answer is incomplete.",
+      "For a simple FAQ where answers sit in one paragraph, graph RAG adds cost and delay with no gain."
+    ],
+    "inside": [
+      "Stored: nodes (entity name, type, description), edges (relation, source chunk IDs), chunk text and embeddings, and community summaries with their embeddings.",
+      "Entity resolution merges duplicates by name similarity, embedding similarity, or an LLM check. It is the most important quality step.",
+      "Traversal: start from seed nodes found by embedding match, expand 1 to 3 hops, rank by edge strength or relevance, and collect supporting chunks as evidence.",
+      "The generator gets the triples, the linked text chunks, and sometimes community summaries. Citations point back to chunk IDs.",
+      "Updates: new documents require new extraction, entity merging, and possibly recomputed communities. Incremental updates are harder than adding vectors.",
+      "Graph stores can be a property graph database such as Neo4j or a simple edge table. Most corpora of moderate size work with the latter."
+    ],
+    "matters": [
+      "It tests whether you pick tools by problem type, not by hype.",
+      "It shows the link between multi-hop reasoning needs and retrieval structure.",
+      "Cost and maintenance trade-offs are a key part of a good answer."
+    ],
+    "watch": [
+      "LLM extraction can invent edges. A wrong edge looks like a trusted fact. Keep the source chunk for each edge and verify.",
+      "Duplicate entities fragment the graph and break paths.",
+      "Index cost and refresh effort can exceed the value for single-hop questions.",
+      "Graph size can explode. Prune weak edges and limit hop depth to avoid noisy context.",
+      "Evaluation is hard. Build a set of real multi-hop and global questions and compare against plain RAG."
+    ]
+  },
+  "40": {
+    "short": [
+      "RAG can fail at parsing, chunking, retrieval, ranking, or generation. Diagnose each stage on its own, then fix the weakest.",
+      "Errors multiply, so a small loss at each stage becomes a large total loss."
+    ],
+    "picture": [
+      "A user asks 'What is the refund window?'. The index holds the 2022 policy (30 days) and the 2024 policy (14 days). The retriever returns the old one. The model answers '30 days' with a citation. The answer is fluent, cited, and wrong.",
+      "Stage yields multiply. Parsing 95 percent, chunking 95 percent, retrieval 85 percent, generation 90 percent gives 0.95 x 0.95 x 0.85 x 0.90 = about 69 percent end to end. Four good stages still give a mediocre system.",
+      "Parsing failure: a scanned PDF returns empty text, or a table is flattened into a stream of numbers. No later stage can recover data that never entered the index.",
+      "Chunking failure: the answer is split across two chunks, so neither one matches the query well.",
+      "Retrieval failure: the user says 'car', the document says 'vehicle', and an exact-term search misses it. Or the query contains a part number, and dense embeddings blur it.",
+      "Ranking failure: the right chunk is in the top 50 but not in the top 5 that fit in the prompt.",
+      "Generation failure: the right chunk is in the prompt, but the model ignores it, mixes it with its memory, or misreads a table.",
+      "First diagnostic: check recall@20 on labeled questions. If the gold chunk is not in the top 20, changing the prompt cannot help. If it is there but the answer is wrong, focus on ranking and generation."
+    ],
+    "inside": [
+      "Parsing fixes: layout-aware parsers, OCR for scans, table extraction to markdown or row text, and keeping headings and page numbers as metadata.",
+      "Chunking fixes: structure-aware splits, parent-child retrieval, and contextual headers on each chunk.",
+      "Retrieval fixes: hybrid BM25 plus dense search, query rewriting, multi-query expansion, HyDE (embed a hypothetical answer), domain fine-tuned embeddings, and metadata filters such as date and product.",
+      "Ranking fixes: a cross-encoder reranker, a larger candidate pool (top 50 to 100) with a smaller final set, and MMR to remove near-duplicates.",
+      "Generation fixes: strict prompts to answer only from context, quote and cite, order chunks with the best at the edges, and add an abstain rule with a score threshold.",
+      "Logging per request: query, rewritten query, retrieved IDs and scores, final prompt, answer, and citations. Without logs you cannot debug."
+    ],
+    "matters": [
+      "Interviewers want to see a structured debugging process, not guesses.",
+      "Stage-level evaluation turns vague complaints into specific fixes.",
+      "Most real RAG projects spend more time on parsing and retrieval than on the LLM."
+    ],
+    "watch": [
+      "Do not tune the prompt when retrieval recall is low. Measure first.",
+      "Outdated and conflicting documents give confident wrong answers. Add dates, versions, and deprecation handling.",
+      "A reranker adds latency. Budget for it and cache where you can.",
+      "Citations prove the chunk was retrieved, not that the claim is supported. Check faithfulness.",
+      "Evaluation sets drift. Refresh them with real user queries."
+    ]
+  },
+  "41": {
+    "short": [
+      "An agent harness is the outer program around the LLM. It loops: the model picks an action, the harness runs the tool, adds the result to the history, and asks the model again.",
+      "The loop stops on a final answer or on a limit for steps, tokens, or time."
+    ],
+    "picture": [
+      "A travel assistant gets 'Book me a flight to Pune next Friday under 8,000 rupees'. It searches flights, checks your calendar, asks for confirmation, and books. Each step is one loop turn. The model decides. The harness acts.",
+      "The LLM is only a function from messages to the next message. It cannot run code, call APIs, or remember anything on its own. The harness provides tools, memory, safety, and control.",
+      "Loop steps: build the messages and tool schemas, call the model, check for a tool call, validate arguments against the JSON schema, run the tool with a timeout, append the tool result, and repeat.",
+      "Stop conditions: the model returns a plain answer, step count reaches a cap such as 10, the token budget runs out, the time limit passes, or a human rejects an action.",
+      "Cost grows fast. Each step resends the whole history. If each step adds 1,000 tokens, step k sends about k x 1,000 input tokens. Ten steps send about 55,000 input tokens in total, not 10,000.",
+      "Failure example: a tool returns a 200,000-token web page. It fills the context window and the next call fails. Harness rule: truncate tool output to about 2,000 tokens and add a note that it was cut.",
+      "Failure example: the agent calls the same failing search 20 times with the same arguments. Harness rule: detect repeated identical calls and stop or change course.",
+      "Failure example: a booking tool times out and the harness retries. The airline booked twice. Side-effect tools need idempotency keys."
+    ],
+    "inside": [
+      "State: a list of messages (system, user, assistant, tool), the tool registry with JSON schemas, a step counter, a token counter, and optional scratch notes or a plan.",
+      "Each tool has a name, a clear description, an input schema, and a handler. The model sees name, description, and schema. Clear descriptions improve tool choice.",
+      "Parsing: the model emits a structured tool call. The harness validates it. On invalid arguments it sends an error message back to the model so it can fix the call. It does not crash.",
+      "Execution: run the handler with a timeout and catch exceptions. Return errors as readable tool results. Run independent tool calls in parallel when the model requests several.",
+      "Context control: summarize or drop old tool results when the history gets long. Keep the system prompt and the recent turns intact.",
+      "Safety: allow-list tools, gate destructive actions behind human approval, run code in a sandbox, and treat tool output as untrusted text."
+    ],
+    "matters": [
+      "Agents are common in interviews. A clear loop with limits shows you can build reliable systems, not demos.",
+      "The harness, not the model, enforces cost, safety, and reliability.",
+      "It connects to tool design, RAG as a tool, and evaluation of multi-step behavior."
+    ],
+    "watch": [
+      "Infinite or wasteful loops: always set a hard step limit and a token budget.",
+      "Prompt injection through tool output, such as a web page that says 'ignore your instructions'. Never give the model more power than the user has.",
+      "Retries on tools with side effects can repeat actions. Use idempotency keys and confirmation steps.",
+      "Errors compound across steps. A 95 percent per-step success rate over 10 steps gives about 60 percent overall. Keep tasks short and verify results.",
+      "Evaluate the trajectory, not only the final answer. Log every step."
+    ]
+  }
+}

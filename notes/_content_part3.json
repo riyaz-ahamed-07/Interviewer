@@ -1,0 +1,805 @@
+{
+  "42": {
+    "short": [
+      "Tool calling lets a language model ask your code to do something. The model writes a structured request with a tool name and JSON arguments. Your code runs the tool and sends the result back.",
+      "The model never runs the tool itself. It only predicts text in a fixed format. This keeps your systems under your control."
+    ],
+    "picture": [
+      "Think of a clerk with a phone. The clerk (model) cannot open the warehouse. The clerk calls the warehouse (your code) and reads the answer to the customer.",
+      "Example: a support bot gets the message 'Where is order 42?'. The model has no order data. It needs a tool.",
+      "Step 1: you send the model the user message plus a list of tool definitions. Each definition has a name, a description, and a JSON Schema for the arguments.",
+      "Step 2: the model replies with a tool call instead of normal text. Example: name = get_order, arguments = {id: 42}. The API marks the reply with a stop reason such as tool_calls.",
+      "Step 3: your code checks the arguments against the schema. It then calls the real order API.",
+      "Step 4: you append the result as a message with role 'tool'. You also copy the call id so the model can match result to request.",
+      "Step 5: you call the model again. It reads the result and writes the final answer: 'Order 42 ships on Friday.'",
+      "This loop can repeat. The model may call several tools before it answers. A harness loop (topic 41) adds step limits to stop endless cycles."
+    ],
+    "inside": [
+      "The API turns your tool list into text and puts it in the prompt, often in a special format. The tool names and descriptions use tokens. Ten tools with long schemas can cost thousands of tokens on every call.",
+      "The model was fine-tuned on many examples of calls. During training it learned when to emit the call format. At run time the call is just next-token prediction, with no special logic.",
+      "Constrained decoding makes the JSON always valid. The decoder keeps a grammar state. At each step it sets the logit of every token that breaks the grammar to minus infinity. Only valid tokens can be picked.",
+      "Constrained decoding fixes syntax only. It cannot fix meaning. The model can still output a valid but wrong value, such as id 24 instead of 42.",
+      "Parallel tool calls: the model can return several calls in one reply. Your code can run them at the same time and return all results together. This cuts latency when the calls do not depend on each other.",
+      "Tool choice setting: 'auto' lets the model decide. 'required' forces a call. A named tool forces that exact tool. Use 'required' when a step must always fetch data.",
+      "Good description text is the main control. Write when to use the tool, what each argument means, and an example value. Models pick tools by reading these words."
+    ],
+    "matters": [
+      "Tool calling connects the model to ERP, CRM, databases, and RPA bots. Without it the model can only talk. With it the model can act.",
+      "It gives fresh and exact data. A model cannot know today's stock level. A tool can return it.",
+      "Typed schemas make output machine-readable. Your code does not parse free text with regular expressions.",
+      "Interviewers ask about it because it is the base of every agent. Know the full loop and where validation belongs."
+    ],
+    "watch": [
+      "Never trust arguments. Prompt injection in a document can make the model call delete_all_records. Validate every argument, use allow-lists, give the tool least privilege, and ask a human to approve destructive actions.",
+      "Too many tools confuse the model. Accuracy of tool choice drops as the list grows. Keep the list short, or select a subset per step.",
+      "Tool errors need clear messages. Return the error text to the model so it can fix the arguments. A blank error leads to blind retries.",
+      "Do not send huge tool results back. A 50,000-token JSON dump fills the context. Trim, paginate, or summarise first.",
+      "Side effects can run twice if you retry. Use idempotency keys for actions such as 'create payment'."
+    ]
+  },
+  "43": {
+    "short": [
+      "MCP (Model Context Protocol) is an open standard for connecting AI apps to tools and data. An MCP server wraps a system and exposes it in one common format. Any MCP client can then use it with no custom code.",
+      "It does not make the model smarter. It only makes the connection standard."
+    ],
+    "picture": [
+      "Think of a USB-C port. Before USB-C, each device needed its own cable. With one standard, any device works with any port.",
+      "The problem before MCP: N apps and M tools needed N × M custom integrations. Example: 4 AI apps and 10 systems means 40 connectors.",
+      "With MCP, each app implements one client and each system implements one server. The count becomes N + M, so 14 pieces of code.",
+      "Three roles. The host is the app the user sees, such as an IDE or chat app. The client lives inside the host and holds one connection. The server wraps a system such as files, Slack, or a database.",
+      "A server offers three kinds of things. Tools are actions the model can call. Resources are data the app can read, such as a file or a record. Prompts are reusable templates.",
+      "Example: a Postgres MCP server exposes a tool run_query and a resource for each table schema. A coding agent connects, lists them, and starts querying.",
+      "Discovery is live. The client asks the server what it can do at run time. You add a new tool on the server and clients see it with no app update.",
+      "Local servers run as a child process on your machine. Remote servers run over the network and use OAuth for login."
+    ],
+    "inside": [
+      "Messages use JSON-RPC 2.0. Each message is a request, a response, or a notification. A request has an id, a method, and params.",
+      "Startup handshake: the client sends 'initialize' with its protocol version and capabilities. The server replies with its own. Both sides then agree on which features to use.",
+      "Core methods: tools/list returns tool names and JSON Schemas. tools/call runs a tool. resources/list and resources/read give data. prompts/list and prompts/get give templates.",
+      "Transports: stdio for local servers. The host starts the server process and talks over standard input and output. Streamable HTTP for remote servers. It can stream partial results with server-sent events.",
+      "Servers can send notifications such as tools/list_changed. The client then fetches the list again. Clients can also offer features back, such as asking the host's model to generate text (sampling).",
+      "The host converts MCP tool definitions to the model's own tool-calling format. So MCP sits below tool calling (topic 37). The model still just emits a name and arguments.",
+      "Auth for remote servers uses OAuth. The server states what scopes it needs. The user approves them once."
+    ],
+    "matters": [
+      "It cuts integration cost. Teams write one server per system and reuse it in many agents and IDEs.",
+      "It separates ownership. The team that owns the CRM owns the CRM server, including its access rules.",
+      "It keeps agents flexible. You can swap the model or the host app and keep all tools.",
+      "A strong interview answer names the three server features, the transport types, and the N × M to N + M idea."
+    ],
+    "watch": [
+      "MCP is a protocol. It is not a model, a framework, or a security layer. Say this clearly.",
+      "A server is code that runs with your permissions. A malicious or hacked server can steal data. Install only trusted servers and give narrow scopes.",
+      "Tool descriptions come from the server and go into the prompt. A bad server can hide instructions in them (tool poisoning). Review descriptions and pin versions.",
+      "Each connected server adds tool schemas to the context. Twenty servers can use a large share of the token budget. Connect only what the task needs.",
+      "Stdio servers can crash or hang without notice. Add timeouts and restart logic in the host."
+    ]
+  },
+  "44": {
+    "short": [
+      "Short-term memory is everything in the model's context window right now. Long-term memory is data stored outside the model and fetched when needed. An agent needs both to work across long tasks.",
+      "The model itself keeps nothing between calls. All memory is text that your code puts back into the prompt."
+    ],
+    "picture": [
+      "Think of a desk and a filing cabinet. The desk is small, but you can see everything on it. The cabinet is big, but you must look things up.",
+      "Short-term memory is the desk. It holds the chat history, tool results, and a scratchpad. Its size is the context limit, for example 32k tokens.",
+      "Every token on the desk costs money and time on every call. A long history makes each step slower and more expensive.",
+      "Example: an agent processes a 200-page tender. It cannot keep all pages on the desk. It keeps notes and finds pages when needed.",
+      "Long-term memory is the cabinet. It lives in a database or a vector store. The agent writes a fact there, then reads it back days later.",
+      "Three kinds. Episodic memory stores what happened, such as 'last Tuesday the user rejected supplier A'. Semantic memory stores facts, such as 'user prefers EUR'. Procedural memory stores how to do things, such as a saved checklist.",
+      "Budget rule: system prompt + tool schemas + memory + retrieved documents + the answer must fit in the context window.",
+      "Example of a bad design: put the whole history into every call. By turn 80 the prompt is 40k tokens and the bot is slow, costly, and confused."
+    ],
+    "inside": [
+      "Sliding window: keep only the last N turns. It is simple. It loses early facts, such as the user's goal.",
+      "Summarisation: when the history passes a limit, ask the model to compress old turns into a short summary. Keep the summary and the newest turns. Facts can get lost or changed in each summary, so keep key facts in a separate field.",
+      "Tool output trimming: after the model uses a large result, replace it with a short note. A 20,000-token web page becomes 'Page read; price is 49 USD'.",
+      "Write path for long-term memory: after an event, extract facts with a model or rules. Embed each fact into a vector. Store the text, the vector, the user id, and a timestamp.",
+      "Read path: embed the current question. Search the store for the top-k similar items. Filter by user id. Rank by similarity, recency, and importance. Put the best few in the prompt.",
+      "Updates: a new fact can conflict with an old one, such as a new address. The store needs an update or delete rule, or the agent will quote stale data.",
+      "Thread state versus store: a workflow framework keeps state for one run (a checkpoint). It lets you resume after a crash. A separate store keeps facts shared across runs and users."
+    ],
+    "matters": [
+      "Long workflows, such as a multi-day RFP, need state that survives restarts. Context alone cannot do this.",
+      "Good memory reduces cost. You send 2k relevant tokens, not 40k old tokens.",
+      "Memory gives personalisation. The agent remembers the user's format and rules.",
+      "It is a common interview topic. Be ready to explain what to keep, what to drop, and how to retrieve."
+    ],
+    "watch": [
+      "Long context hurts accuracy. Models often miss facts placed in the middle of a long prompt ('lost in the middle'). More tokens do not always mean better recall.",
+      "Storing personal data without a policy creates legal risk. Set retention limits, support deletion on request, and keep data per user.",
+      "Memory poisoning: a bad document or user can write a false or hostile 'fact' that the agent trusts later. Check what you store.",
+      "Retrieval by similarity can return near-matches that are wrong. Always include the source and date, and filter by user.",
+      "Summaries drift. After many rounds, numbers and names can change. Keep exact values in structured fields, not only in prose."
+    ]
+  },
+  "45": {
+    "short": [
+      "Human-in-the-loop (HITL) sends uncertain or risky AI outputs to a person for review. Safe and confident outputs go straight through. Reviewer fixes become new training and test data.",
+      "It lets a team ship AI in areas where mistakes cost real money."
+    ],
+    "picture": [
+      "Think of a bank cheque desk. A machine reads most cheques. If a number looks unclear or the amount is large, a clerk checks it.",
+      "Example: an invoice extractor reads vendor, date, and total. Each field gets a confidence score between 0 and 1.",
+      "High confidence, such as 0.98 on a small invoice: auto-approve. This is called straight-through processing.",
+      "Low confidence, such as 0.62 on the total, or a payment above a set amount: send to a review queue. A person sees the image and the extracted fields side by side and corrects them.",
+      "Corrections are saved with the original input and the model's output. They become labelled data.",
+      "That data trains and tests the next model version. Over time the model improves, more items pass automatically, and the queue shrinks. This is the data flywheel.",
+      "Two numbers rule the design. Automation rate is the share of items that skip review. Error rate among auto-approved items must stay under a set target, such as 0.5%.",
+      "Example: at threshold 0.90, 70% pass automatically with 1% errors. At 0.97, 45% pass with 0.2% errors. The business picks the point."
+    ],
+    "inside": [
+      "Confidence sources: token log-probabilities of the extracted value, agreement across repeated runs, rule checks, and a separate judge model. Combine several signals.",
+      "A raw model self-report such as 'I am 95% sure' is poorly calibrated. Models say it when wrong. Prefer log-probabilities, validators, and measured accuracy.",
+      "Calibration means that a score of 0.9 is right about 90% of the time. Measure it on a held-out set with a reliability curve and expected calibration error (ECE). Fix it with temperature scaling or isotonic regression.",
+      "Choose the threshold on a validation set. Sweep thresholds. For each one, record automation rate and error rate among auto-approved items. Pick the point that meets the risk target.",
+      "Use separate thresholds per field and per risk. A typo in a note field is cheap. A wrong bank account number is not.",
+      "Hard rules override scores. Always review payments above a limit, new vendors, or legal text, whatever the confidence.",
+      "Queue design: show the model's guess and the source highlight. Prioritise by value and by deadline. Track review time and reviewer disagreement. Audit sample: also review a small random share of auto-approved items. This finds silent errors and drift."
+    ],
+    "matters": [
+      "Enterprises will not accept unchecked AI on invoices, claims, or legal records. HITL is how AI is approved for production.",
+      "It turns accuracy into a business dial. You trade automation against risk with a clear number.",
+      "It creates labelled data from daily work, at low cost.",
+      "Interviewers like it because it shows product thinking, not only modelling."
+    ],
+    "watch": [
+      "Automation bias: reviewers click 'accept' too fast when the model is usually right. Show uncertain fields first, and measure reviewer error with planted test items.",
+      "Selection bias in feedback: you only get corrections for items sent to review. The auto-approved set has no labels. The audit sample fixes this.",
+      "Confidence drifts when input changes, such as a new invoice layout. Monitor the score distribution and recheck calibration often.",
+      "A review queue that is too big defeats the purpose. Track cost per item and queue age.",
+      "Do not train on reviewer fixes without a quality check. Two reviewers can disagree, and bad labels harm the model."
+    ]
+  },
+  "46": {
+    "short": [
+      "Document AI turns a scanned page into structured data. It finds where text is, reads the characters, works out the layout, and extracts fields such as total and date. OCR (optical character recognition) is the reading step.",
+      "TrOCR is a transformer model that reads a text line image and writes the text. Newer vision-language models can read a whole page and output JSON."
+    ],
+    "picture": [
+      "Think of a clerk who types paper invoices into a system. The clerk looks at the page, finds the total, reads it, and checks it against the line items. Document AI copies these steps.",
+      "Step 1, cleanup: deskew a tilted scan, remove noise, and fix contrast. Scan at about 300 DPI. Very low resolution makes characters merge.",
+      "Step 2, detection: find where lines, words, and tables are. The output is boxes. Models such as DBNet or CRAFT do this.",
+      "Step 3, recognition: read each box and output characters. TrOCR does this step.",
+      "Step 4, layout and reading order: decide which text is a header, a table cell, or a footnote. Two-column pages must be read column by column, not across.",
+      "Step 5, field extraction: pick the values for vendor, invoice date, and total. Models such as LayoutLM use the text, its position, and the image together.",
+      "Step 6, validation: check that the line items sum to the total and that the date is valid. Send low-confidence fields to review (topic 40).",
+      "Example error: the model reads 1,284.50 where the page says 1,234.50. A sum check against the line items catches it.",
+      "Digital PDFs are different. Many contain a text layer. Read it directly, which is faster and exact. Scans have no text layer and need OCR."
+    ],
+    "inside": [
+      "TrOCR has an encoder and a decoder. The encoder is a vision transformer. It cuts the line image into patches, such as 16 × 16 pixels, and turns each patch into a vector.",
+      "The decoder is a text transformer. It writes one token at a time. Each step uses cross-attention to look at the image patch vectors. It stops at an end token.",
+      "Decoding often uses beam search. It keeps the best few partial strings at each step, so it is less likely to lock in an early mistake.",
+      "TrOCR reads one line at a time. A separate detector must first cut the page into lines.",
+      "Classic engines: Tesseract. Deep learning toolkits: PaddleOCR and docTR. Each combines detection and recognition.",
+      "Layout models: LayoutLM adds the 2-D position of each word as an input. So the model knows that '1,234.50' sits at the bottom right, next to the word 'Total'.",
+      "End-to-end option: models such as Donut or Qwen-VL read the page image and output JSON directly. They skip the separate OCR step. They are simple to build, but can invent values and are slower per page."
+    ],
+    "matters": [
+      "Invoices, claims, and KYC forms are core enterprise inputs. Poor OCR hurts every later step, such as search and extraction.",
+      "Good measurement lets you improve with data. Teams track error per field, not one global score.",
+      "The trade-off between a classic pipeline and a vision-language model is a common design question. Pipelines are cheap and traceable. Vision-language models are flexible on new layouts.",
+      "Confidence per field feeds the review queue. This links OCR to HITL."
+    ],
+    "watch": [
+      "Do not assume a PDF has text. Many PDFs are scans. Check for a text layer first.",
+      "Table structure is easy to lose. Plain text order can mix cells from different columns. Use table-aware models and keep row and column ids.",
+      "Character error rate (CER) is edits divided by true characters: (substitutions + deletions + insertions) / characters. It hides business impact. One wrong digit in a total is a CER of under 1% but a failed invoice. Also track field-level accuracy.",
+      "Vision-language models can hallucinate. They may fill a blank field with a plausible value. Require the value to match text found on the page.",
+      "Handwriting, stamps, and fax noise cause big drops. Test on your real documents, not on clean benchmarks."
+    ]
+  },
+  "47": {
+    "short": [
+      "A perceptron is one artificial neuron. It multiplies each input by a weight, adds a bias, and applies an activation function. A multi-layer perceptron (MLP) stacks many such neurons in layers.",
+      "A single neuron can only draw a straight boundary. Layers with non-linear activations can learn curved boundaries."
+    ],
+    "picture": [
+      "Think of a judge with a scoring sheet. Each input is a criterion. The weight says how much that criterion matters. The bias is a starting score. The activation turns the total score into a decision.",
+      "Example: a loan model has inputs income, debt, and age. It computes z = w1·income + w2·debt + w3·age + b. If z is above 0, say 'approve'.",
+      "Geometry: the equation w·x + b = 0 is a line in 2-D, a plane in 3-D, and a hyperplane in more dimensions. One neuron splits space into two halves.",
+      "XOR shows the limit. XOR gives 1 when the two inputs differ. The four points cannot be split by one straight line. A single perceptron fails.",
+      "Fix: add a hidden layer. One hidden neuron can detect 'x1 AND NOT x2'. Another can detect 'x2 AND NOT x1'. The output neuron combines them with OR.",
+      "Another view: each layer bends and folds the space. After the fold, the next layer can separate the classes with a straight cut.",
+      "Layer form: h = f(Wx + b). W is a matrix with one row per neuron. A layer with 784 inputs and 256 neurons has 784 × 256 + 256 = 200,960 parameters.",
+      "Universal approximation theorem: one hidden layer that is wide enough can approximate any continuous function on a bounded range. The theorem does not say how to find the weights or how wide the layer must be."
+    ],
+    "inside": [
+      "Perceptron learning rule (1958): if the output is wrong, move the weights toward the input for a missed positive, or away for a false positive. It converges only if the data can be split by a line.",
+      "Modern MLPs train with gradient descent and backpropagation instead. Hidden units use smooth activations such as ReLU.",
+      "Without an activation, layers collapse. W2(W1x) equals (W2W1)x. Ten linear layers are the same as one. The activation is what gives depth its power.",
+      "ReLU hidden layers make a piecewise linear function. The network cuts input space into many flat regions. More neurons give more regions.",
+      "Depth versus width: deep nets reuse features and need fewer neurons for complex functions. Wide shallow nets need many more.",
+      "In PyTorch, a Linear layer is exactly Wx + b. It stores W with shape (out, in) and applies x times W transposed."
+    ],
+    "matters": [
+      "Every deep model contains this building block. A transformer feed-forward block is a two-layer MLP applied to each token.",
+      "In large language models, these MLP blocks hold about two thirds of the parameters.",
+      "Interviewers use XOR and the collapse of stacked linear layers to test basic understanding.",
+      "On tabular business data, a small MLP is often a fair baseline, though tree models often win."
+    ],
+    "watch": [
+      "Stacking linear layers with no activation gives one linear layer. State this clearly.",
+      "Do not say that the universal approximation theorem means MLPs always learn well. It says a good solution exists. It does not promise training will find it.",
+      "Input scale matters. Unscaled features, such as income in thousands and age in tens, make training slow. Standardise inputs.",
+      "Zero initial weights make all neurons in a layer identical, so they never differ. Use random initialisation."
+    ]
+  },
+  "48": {
+    "short": [
+      "The forward pass sends input through the layers, one after the other, to produce a prediction and then a loss. Each layer reads the output of the previous layer. The network also saves its intermediate values for the backward pass.",
+      "On a GPU, you process a batch of examples at once as a matrix."
+    ],
+    "picture": [
+      "Think of a factory line. Raw material enters. Each station changes it. The last station gives the product, and a checker scores it.",
+      "Example: a 3-layer MLP for digits. Input is a 28 × 28 image, flattened to 784 numbers. Hidden layer 1 has 256 units. Hidden layer 2 has 128 units. The output has 10 logits.",
+      "Layer 1: h1 = ReLU(W1x + b1). Layer 2: h2 = ReLU(W2h1 + b2). Output: logits = W3h2 + b3. Then loss = cross-entropy(logits, label).",
+      "Shape trace with batch B = 32: input (32, 784). After layer 1: (32, 256). After layer 2: (32, 128). Logits: (32, 10). Loss: one number.",
+      "Matrix rule: (B, in) times (in, out) gives (B, out). The inner sizes must match. A shape error means a layer size is wrong.",
+      "Why batches: a GPU has thousands of cores. One example uses a tiny part of them. A batch of 32 or more fills them and gives a more stable gradient.",
+      "Saved values: the network keeps x, h1, and h2 in memory. Backprop needs them to compute gradients.",
+      "At inference you only need the logits. You can skip saving values, which saves memory."
+    ],
+    "inside": [
+      "Each Linear layer costs about 2 × B × in × out floating-point operations (one multiply and one add per weight). For layer 1 above with B = 32 this is about 12.8 million.",
+      "Memory for activations grows with batch size and depth. For large models, activations often use more memory than the weights during training.",
+      "Autograd builds a computation graph during the forward pass. Each operation records its inputs and how to compute its derivative. This is why the pass is slower in training than in inference.",
+      "Inference mode stops graph building for gradients. It cuts memory and time.",
+      "Layers that act differently in train and eval mode: dropout and batch norm. Dropout is active only in train mode. Batch norm uses batch statistics in train and running averages in eval.",
+      "Mixed precision runs most matrix multiplies in 16-bit floats. It is about twice as fast and halves activation memory. The loss and sensitive sums stay in 32-bit.",
+      "For language models, the forward pass has two phases at inference. Prefill processes the whole prompt at once. Decode makes one token at a time and reuses a key-value cache."
+    ],
+    "matters": [
+      "Tracing shapes through a forward pass is the top skill for fixing PyTorch bugs.",
+      "It lets you estimate cost. Floating-point operations and memory follow directly from shapes.",
+      "It explains the difference between training and inference memory.",
+      "Interview questions often ask you to write the forward pass of a small network on a whiteboard."
+    ],
+    "watch": [
+      "Missing batch dimension. A tensor of shape (784,) fails or silently broadcasts in a layer that expects (B, 784). Use unsqueeze(0) for a single example.",
+      "Forgetting model.eval() at inference leaves dropout on and batch norm in batch mode. Outputs become noisy and change per call.",
+      "Applying softmax to outputs and then passing them to a loss that applies softmax again. Pass raw logits.",
+      "Storing the loss tensor in a list for logging keeps the whole graph in memory. Use loss.item().",
+      "Broadcasting hides errors. A (32, 1) tensor minus a (32,) tensor gives (32, 32), not (32,)."
+    ]
+  },
+  "49": {
+    "short": [
+      "A loss function gives one number that says how wrong a prediction is. Training tries to make this number small. Use mean squared error (MSE) for numbers, and cross-entropy for classes.",
+      "The right loss gives the right gradient. A wrong pairing of loss and output layer is a very common bug."
+    ],
+    "picture": [
+      "Think of a teacher who grades each answer. MSE grades distance. Cross-entropy grades confidence in the correct answer.",
+      "MSE example: a model predicts house price 300k, true price 350k. Error is 50k. Squared error is 2,500 million. A 100k error costs 4 times more than a 50k error.",
+      "Because of squaring, MSE is very sensitive to outliers. One bad label can dominate. Mean absolute error or Huber loss is gentler.",
+      "Cross-entropy example: three classes (cat, dog, bird). The true class is cat. The model gives probabilities 0.7, 0.2, 0.1. The loss is -ln(0.7) = 0.36.",
+      "If the model gives cat only 0.01, the loss is -ln(0.01) = 4.6. If it gives 0.9, the loss is 0.105. A confident wrong answer is punished hard.",
+      "Binary cross-entropy (BCE) is for yes or no, and for multi-label tasks. A tag model for a document can predict 'invoice' and 'urgent' at once. Each label is its own yes or no.",
+      "Language models: the loss is cross-entropy at each token, averaged. Perplexity is e raised to that loss. A loss of 2.0 gives perplexity of about 7.4, which means the model is as unsure as a choice among 7.4 equal options.",
+      "Gradient of cross-entropy with respect to the logits is p - y, where p is the softmax output and y is the one-hot label. It is simple and bounded. Large errors give large but stable steps."
+    ],
+    "inside": [
+      "Softmax turns logits z into probabilities: p_i = exp(z_i) / sum_j exp(z_j). Raw exp can overflow. For z = 1000, exp gives infinity.",
+      "Log-sum-exp trick: subtract the maximum m from all logits first. log softmax(z)_i = z_i - (m + log sum_j exp(z_j - m)). All exponents are now 0 or negative, so no overflow.",
+      "PyTorch classification loss fuses log-softmax and negative log-likelihood. It expects raw logits and integer class indices. logit binary loss fuses sigmoid and BCE the same way.",
+      "Why not softmax then log? A tiny probability underflows to exactly 0, and log(0) is minus infinity. The fused version avoids this.",
+      "Why not MSE for classification? With sigmoid or softmax output, MSE gradients become tiny when the model is confidently wrong. Training stalls. Cross-entropy keeps a strong gradient.",
+      "Cross-entropy comes from maximum likelihood. Minimising it is the same as maximising the probability the model gives to the training labels.",
+      "Label smoothing replaces the one-hot target 1.0 with 0.9 and spreads 0.1 over other classes. It reduces over-confidence. Class weights or focal loss help when classes are very uneven, such as 1% fraud."
+    ],
+    "matters": [
+      "The loss defines what the model learns. A loss that does not match the business goal gives a model that does not help.",
+      "It controls numeric stability. Many NaN losses trace back to a hand-written softmax and log.",
+      "Perplexity and loss curves are the main health check for language model training.",
+      "Interview tip: connect loss to output layer. Regression: linear output with MSE. Multi-class: logits with cross-entropy. Multi-label: logits with BCE."
+    ],
+    "watch": [
+      "Double softmax: apply softmax in the model, then classification loss, which applies it again. Learning slows and probabilities flatten. Same for sigmoid and logit binary loss.",
+      "Wrong target type. classification loss wants class indices (long integers) or class probabilities. One-hot floats with the wrong shape give errors or wrong loss.",
+      "Using accuracy as the loss is impossible. Accuracy has no useful gradient because it is a step function. Use it only as a metric.",
+      "A low loss does not mean a good model on uneven data. A model that always says 'not fraud' gets a low loss at 1% fraud. Check precision, recall, and calibration.",
+      "Do not compare loss values across different tokenizers or datasets. Perplexity is only meaningful with the same tokens."
+    ]
+  },
+  "50": {
+    "short": [
+      "Backpropagation computes the gradient of the loss with respect to every weight. It uses the chain rule and walks the network from output to input. The gradients then tell the optimiser how to change each weight.",
+      "It costs about as much as two forward passes, so training is feasible even with billions of weights."
+    ],
+    "picture": [
+      "Think of blame sharing. The loss is high. Backprop asks: how much did each weight contribute? It passes blame backward, layer by layer.",
+      "Example: a tiny chain. z = w·x, then y_hat = sigmoid(z), then loss L = (y_hat - y)^2. Let x = 2, w = 0.5, y = 1.",
+      "Forward: z = 1.0, y_hat = 0.731, L = 0.0724.",
+      "Backward step 1: dL/dy_hat = 2(y_hat - y) = -0.538.",
+      "Backward step 2: dy_hat/dz = y_hat(1 - y_hat) = 0.197. So dL/dz = -0.538 × 0.197 = -0.106.",
+      "Backward step 3: dz/dw = x = 2. So dL/dw = -0.106 × 2 = -0.212. A negative gradient means that raising w lowers the loss.",
+      "Each step multiplies the incoming gradient by a local derivative. This is the chain rule: dL/dw = dL/dy_hat × dy_hat/dz × dz/dw.",
+      "For a linear layer with output z = Wx: the gradient for W is the outer product of the incoming gradient and x (delta times x transposed). The gradient passed to the previous layer is W transposed times delta."
+    ],
+    "inside": [
+      "The forward pass builds a graph. Each node is a simple operation such as matrix multiply, add, or ReLU. The graph stores the tensors needed for derivatives.",
+      "The backward pass visits nodes in reverse order. Each node receives the gradient of the loss with respect to its output. It returns gradients with respect to its inputs.",
+      "If a value is used in two places, its gradients add up. This is why weight sharing in CNNs and RNNs works. The shared filter gets the sum of gradients from all positions.",
+      "Reverse mode is cheap when there is one scalar output and many inputs. That fits a loss and millions of weights. Forward mode would need one pass per weight.",
+      "Cost: the backward pass is about twice the forward cost. One training step is about three times a forward pass.",
+      "Memory: backward needs the saved activations. Gradient checkpointing saves only some and recomputes the rest. It trades about 30% more compute for large memory savings.",
+      "In PyTorch: tensors with learning-enabled record operations. loss.backward() fills the .grad field of each leaf tensor. Gradients add to existing .grad values. Gradient check: compare with the numeric estimate (L(w + e) - L(w - e)) / 2e on a small model. This finds bugs in custom backward code."
+    ],
+    "matters": [
+      "It is the algorithm behind every deep learning model. Optimisers only use its output.",
+      "It explains vanishing gradients, since gradients are products of local derivatives.",
+      "It explains memory use in training and why checkpointing helps.",
+      "It explains bugs with detach, no_grad, and in-place changes."
+    ],
+    "watch": [
+      "Gradients accumulate. If you do not call optimizer.zero_grad() each step, old gradients add to new ones. The effective step becomes wrong. You can use this on purpose for gradient accumulation across small batches.",
+      "Calling .item(), .numpy(), or detach() cuts the tensor out of the graph. Gradients stop there. Training silently stops for earlier layers.",
+      "In-place operations can overwrite a value that backward needs. PyTorch then raises an error. Avoid in-place changes on tensors that need gradients.",
+      "A second backward() call on the same graph fails because the graph is freed. Use retain_graph=True only when you really need it.",
+      "Non-smooth operations, such as argmax or rounding, have zero or undefined gradient. A model with argmax in the middle cannot learn through it."
+    ]
+  },
+  "51": {
+    "short": [
+      "In a deep network, the gradient at early layers is a product of many numbers, one per layer. If each number is below 1, the product goes to zero (vanishing). If each is above 1, it grows without limit (exploding).",
+      "Vanishing gradients stop early layers from learning. Exploding gradients cause NaN loss."
+    ],
+    "picture": [
+      "Think of a message passed along a line of 50 people. If each person repeats only 80% of the volume, the last person hears nothing. If each repeats 120%, the last person is deafened.",
+      "Number example: the slope of sigmoid is at most 0.25. Through 10 sigmoid layers the gradient shrinks by at most 0.25^10, which is about 0.000001. Early layers get almost no signal.",
+      "Exploding example: a weight factor of 1.5 over 50 steps gives 1.5^50, which is about 6 × 10^8. One update then throws the weights far away, and the loss becomes NaN.",
+      "Where it appears: deep plain networks, and especially RNNs. An RNN reuses the same weight matrix at every time step. A 100-step sequence multiplies by that matrix 100 times.",
+      "Symptom of vanishing: training loss decreases very slowly. Early layers show gradient norms near 0 while late layers look normal.",
+      "Symptom of exploding: sudden loss spikes, gradient norms of 1e4 or more, then NaN or infinity.",
+      "Fix summary: pick activations with slope near 1 (ReLU, GELU). Add residual connections. Add normalisation. Use careful initialisation. Clip gradients. Use gated RNNs.",
+      "Residual connections give the gradient a direct path. A block y = x + F(x) has derivative 1 + dF/dx. The 1 means the gradient cannot vanish across the block."
+    ],
+    "inside": [
+      "Backprop gives the gradient at layer 1 as a product: W_n^T · diag(f'(z_n)) · ... · W_2^T · diag(f'(z_2)). Its size scales like lambda^n, where lambda is the typical size of one factor. Lambda below 1 vanishes. Above 1 explodes.",
+      "More exactly, lambda relates to the largest singular value of the weight matrix times the activation slope.",
+      "Initialisation keeps lambda near 1. Xavier (Glorot) init uses variance 2 / (fan_in + fan_out) for tanh and sigmoid. He init uses variance 2 / fan_in for ReLU. The factor 2 offsets ReLU zeroing half of the units.",
+      "Gradient clipping by norm: if the total gradient norm g is above a limit c, scale it: g = g × c / norm. The direction stays the same. The step size is capped. A common value for c is 1.0.",
+      "LSTM and GRU add a cell state with additive updates: c_t = f_t · c_(t-1) + i_t · c_candidate. When the forget gate is near 1, the gradient passes through almost unchanged.",
+      "Normalisation layers re-centre and re-scale activations at each layer. This keeps the signal and the gradient in a stable range.",
+      "Learning-rate warmup starts with a tiny rate and grows it over the first steps. Early updates are the most dangerous because weights and Adam statistics are not yet settled."
+    ],
+    "matters": [
+      "It explains why transformers use residual connections and layer norm. Without them, 100-layer models would not train.",
+      "It explains why LSTMs replaced plain RNNs.",
+      "It is a standard interview question with a clear answer: cause, symptoms, and fixes.",
+      "In practice, it guides debugging. You log gradient norms per layer and act on what you see."
+    ],
+    "watch": [
+      "NaN loss does not always mean exploding gradients. Other causes: log of zero, division by zero, bad data values, learning rate too high, or float16 overflow. Check the data and the loss first.",
+      "ReLU has its own failure. A neuron with negative input always outputs 0 and has zero gradient. It can die and never recover (dying ReLU). Lower the learning rate or use Leaky ReLU or GELU.",
+      "Clipping hides a problem. If clipping triggers on every step, fix the cause, such as the learning rate or initialisation.",
+      "Clip after unscaling when you use mixed precision with a loss scaler. Clipping scaled gradients uses the wrong limit.",
+      "Vanishing gradients are not the only reason for slow training. Poor learning rate or bad data can look the same."
+    ]
+  },
+  "52": {
+    "short": [
+      "An activation function adds a non-linear bend after each linear layer. Without it, a deep network is just one linear map. Use ReLU or GELU in hidden layers, and sigmoid or softmax at the output to make probabilities.",
+      "The shape of the function controls the gradient, and the gradient controls how well the network trains."
+    ],
+    "picture": [
+      "Think of a light switch versus a dimmer. A linear layer is a plain dimmer. An activation adds a bend, such as a threshold or a soft knee. Many bends together let the network draw complex shapes.",
+      "Sigmoid: 1 / (1 + e^-z). Output between 0 and 1. Good for a yes or no probability. For large or small z, the curve is flat and the gradient is near 0 (saturation). Maximum slope is 0.25.",
+      "Tanh: output between -1 and 1. It is centred on zero, which helps training compared with sigmoid. It still saturates.",
+      "ReLU: max(0, z). Slope is 1 for positive input and 0 for negative input. It is cheap and does not saturate on the positive side. It is the classic hidden-layer default.",
+      "Leaky ReLU: a small slope, such as 0.01, for negative input. It prevents dead neurons.",
+      "GELU: z times the probability that a standard normal value is below z. It is a smooth version of ReLU. BERT and GPT models use it.",
+      "SwiGLU: one linear path multiplied by a swish-activated second path. Llama-style models use it in the feed-forward block. It improves quality at a small cost in extra weights.",
+      "Softmax: turns a vector of logits into probabilities that sum to 1. Use it for single-label multi-class output. Example: logits 2.0, 1.0, 0.1 become 0.66, 0.24, 0.10.",
+      "Choice at the output: sigmoid per class for multi-label (a document can be both 'invoice' and 'urgent'). Softmax for exactly one label."
+    ],
+    "inside": [
+      "Non-linearity is needed because a composition of linear maps is linear. W2(W1x) equals (W2W1)x. The activation breaks this.",
+      "ReLU turns a layer into a piecewise linear function. Each neuron's on or off state selects a region. Together, the network cuts the input into many linear pieces.",
+      "Gradient view: backprop multiplies by f'(z). Sigmoid and tanh have f'(z) below 1 and near 0 at the ends. ReLU has f'(z) = 1 on its active side. That keeps gradients alive in deep nets.",
+      "Dying ReLU: if a large update pushes a neuron's input below 0 for all data, its gradient is 0 and its weights never change. Leaky ReLU, GELU, and lower learning rates reduce this.",
+      "Softmax is shift invariant: adding a constant to all logits does not change the output. Implementations subtract the maximum logit for numeric stability.",
+      "Temperature: divide logits by T before softmax. T below 1 sharpens the distribution. T above 1 flattens it. Language model sampling uses this.",
+      "Attention uses softmax over the scores of all positions, so the weights sum to 1."
+    ],
+    "matters": [
+      "Activation choice affects training speed, stability, and final quality.",
+      "Output activation must match the loss and the task. This is a frequent interview check.",
+      "GELU and SwiGLU show up in modern transformer designs, so you should know why they replaced ReLU.",
+      "It links to topic 46: activation slope drives vanishing gradients."
+    ],
+    "watch": [
+      "Sigmoid or tanh in the hidden layers of a deep network can stall training because of saturation. Prefer ReLU or GELU.",
+      "Do not soften scores into probabilities before the classification loss. The loss already includes that step.",
+      "Softmax for multi-label tasks forces the classes to compete. Use sigmoid per class instead.",
+      "Softmax outputs are not true confidence. They can be near 1.0 on wrong or out-of-domain inputs. Calibrate before you use them as thresholds.",
+      "ReLU with a very high learning rate can kill many units at once. Watch the share of zero outputs."
+    ]
+  },
+  "53": {
+    "short": [
+      "An optimiser turns gradients into weight updates. SGD steps straight downhill. Momentum smooths the path. Adam also scales the step for each weight, and AdamW is the standard for language models.",
+      "The learning rate is the most important setting. A schedule with warmup and decay is the normal practice."
+    ],
+    "picture": [
+      "Think of a hiker in fog who feels only the slope under their feet. SGD takes a step downhill each time. In a narrow valley the hiker zig-zags from wall to wall.",
+      "SGD: w = w - lr × g, where g is the gradient on a mini-batch. The batch gives a noisy but cheap estimate. Noise can help escape sharp minima.",
+      "Momentum: keep a running average of past gradients. The hiker becomes a rolling ball. Side-to-side wiggles cancel. The steady downhill part adds up. Typical factor: 0.9.",
+      "Adam: keep two running averages for every weight. The first (m) is the average gradient. The second (v) is the average squared gradient. The step is m / (sqrt(v) + epsilon).",
+      "Meaning of the Adam step: a weight with big, noisy gradients gets a smaller step. A weight with small, steady gradients gets a larger step. Each weight gets its own scale.",
+      "Defaults: beta1 = 0.9, beta2 = 0.999 (0.95 for large language models), epsilon = 1e-8. The method often works with no tuning.",
+      "AdamW: applies weight decay directly to the weights, not through the gradient. In plain Adam with L2, the decay gets divided by sqrt(v) and becomes uneven. AdamW fixes this and generalises better.",
+      "Schedule: warm up the learning rate for the first 1-5% of steps, then decay by cosine or linear to a small value. Example for fine-tuning: peak 2e-5 for full fine-tuning, 2e-4 for LoRA."
+    ],
+    "inside": [
+      "Adam update in detail: m = b1·m + (1 - b1)·g. v = b2·v + (1 - b2)·g². Bias correction: m_hat = m / (1 - b1^t), v_hat = v / (1 - b2^t). Update: w = w - lr × m_hat / (sqrt(v_hat) + eps).",
+      "Bias correction is needed because m and v start at 0. In the first steps they are too small. The correction divides by a factor that goes to 1.",
+      "Memory: Adam stores m and v for every weight, two extra FP32 numbers, which is 8 bytes. Add FP32 master weights (4) and gradients (4) for mixed precision with 16-bit weights (2). The total is about 16 bytes per parameter.",
+      "Example: a 7B model needs about 7 billion × 16 bytes = 112 GB for full training state. This is why LoRA trains a small set of weights and saves the rest. It is also why 8-bit and paged optimisers exist.",
+      "SGD with momentum uses only one extra buffer. It is common in vision. Adam family dominates transformers.",
+      "Warmup matters for Adam because v is estimated from few samples early on. Large first steps can wreck a model.",
+      "Batch size and learning rate link. A common rule is to scale the learning rate with the batch size (linearly for SGD, roughly with the square root for Adam). Gradient accumulation: add gradients over k small batches, then step once. It gives the effect of a large batch with less memory."
+    ],
+    "matters": [
+      "It explains why training needs much more memory than inference.",
+      "Choosing the learning rate and schedule is the main lever in fine-tuning.",
+      "AdamW versus Adam is a popular interview question. Say 'decoupled weight decay'.",
+      "It supports cost planning. You can estimate GPU memory before you start a job."
+    ],
+    "watch": [
+      "Learning rate too high: loss spikes or becomes NaN. Too low: loss barely moves. Run a quick sweep or a learning-rate range test.",
+      "Order of calls: optimizer.zero_grad(), loss.backward(), optimizer.step(). Calling step before backward uses stale gradients.",
+      "Weight decay should not apply to biases and norm parameters. Applying it everywhere hurts. Use separate parameter groups.",
+      "Pass only trainable parameters to the optimiser when you freeze layers. Otherwise it allocates state for weights that never change.",
+      "Adam can generalise worse than SGD on some vision tasks. Do not assume it always wins."
+    ]
+  },
+  "54": {
+    "short": [
+      "Regularisation reduces overfitting by limiting how freely a model can fit its training data. Main tools are dropout, weight decay, early stopping, data augmentation, and more data. The goal is lower error on new data, even if training error rises a little.",
+      "Small enterprise datasets overfit fast, so regularisation matters most in fine-tuning."
+    ],
+    "picture": [
+      "Think of a student who memorises last year's exam answers. The student scores 100% on that exam and fails a new one. Regularisation forces the student to learn the ideas.",
+      "Sign of overfitting: training loss keeps falling, validation loss turns up. The gap between them grows.",
+      "Dropout: during training, set a random share p of activations to 0 on each step. Example: p = 0.5. A neuron cannot count on any one neighbour, so the network learns redundant, robust features.",
+      "Inverted dropout: keep a unit with probability 1 - p and scale the kept values by 1 / (1 - p). With p = 0.5, kept values double. At test time, do nothing. The expected size is the same.",
+      "Weight decay (L2): add lambda × sum of squared weights to the loss. Large weights cost more. Each step shrinks the weight by a factor (1 - lr × lambda). The function becomes smoother.",
+      "L1 penalty: lambda × sum of absolute weights. It pushes many weights to exactly 0 and gives sparse models.",
+      "Early stopping: after each epoch, check validation loss. Keep the best checkpoint. Stop after a patience of a few epochs with no gain.",
+      "Data augmentation: make new samples from old ones. Images: flips, crops, colour shifts. Text: synonym swap, back-translation. Documents: add scan noise and rotation.",
+      "More data is the best regulariser. If you cannot get labels, use augmentation, synthetic data, or a pretrained model."
+    ],
+    "inside": [
+      "Why L2 works: it prefers small weights. Small weights mean outputs change slowly with inputs. A smooth function fits noise less.",
+      "Bayesian view: L2 is a Gaussian prior on the weights. L1 is a Laplace prior.",
+      "Dropout as an ensemble: each step trains a different thinned network. At test time you use the average of all of them, approximately.",
+      "Dropout rates: 0.1 in transformers, 0.5 in old fully connected layers. Rarely used in the convolution layers of modern CNNs, where batch norm already regularises.",
+      "AdamW decouples decay from the adaptive step. Plain L2 inside Adam is scaled by the adaptive denominator and acts unevenly.",
+      "Early stopping works as a regulariser because weights start small and grow during training. Stopping early limits their size.",
+      "Label smoothing and mixup also regularise. They stop the model from becoming too certain. Capacity control is the other path. Use fewer layers, fewer units, or a low-rank adapter such as LoRA, which limits the number of weights that change."
+    ],
+    "matters": [
+      "Fine-tuning on a few thousand documents overfits quickly. A weak setup gives a model that memorises the training set.",
+      "Regularisation tools are cheap, so they are the first thing to try before collecting more data.",
+      "Interviews often ask: 'Training accuracy is 99%, validation is 80%. What do you do?'",
+      "They link to bias and variance (topic 62). Regularisation trades a little bias for much less variance."
+    ],
+    "watch": [
+      "Leaving the model in train() mode at inference. Dropout stays active and the answers change on each call. Call model.eval().",
+      "Too much regularisation causes underfitting. If training loss is also high, reduce dropout or weight decay.",
+      "Early stopping on the test set leaks information. Use a separate validation set.",
+      "Augmentation must keep the label correct. Flipping the digits 6 and 9, or mirroring text, changes meaning.",
+      "Using dropout together with batch norm can clash in some layouts, because dropout changes the variance that batch norm measures."
+    ]
+  },
+  "55": {
+    "short": [
+      "Normalisation layers rescale activations to zero mean and unit variance, then apply a learned scale and shift. Batch norm computes the statistics across the batch for each feature. Layer norm computes them across the features of each single sample.",
+      "Batch norm is common in CNNs. Layer norm is standard in transformers."
+    ],
+    "picture": [
+      "Think of marking exams from different classes. Batch norm re-scales each question's scores across all students in the class. Layer norm re-scales each student's scores across all questions of that student.",
+      "Why normalise: the input to each layer changes as earlier layers change. Normalisation keeps values in a stable range. Training is faster, allows a higher learning rate, and is less sensitive to initialisation.",
+      "Formula: x_hat = (x - mean) / sqrt(variance + epsilon). Output y = gamma × x_hat + beta. Gamma and beta are learned, so the network can undo the normalisation if needed.",
+      "Batch norm example: a CNN feature map has shape (B, C, H, W). For each channel c, compute the mean and variance over B, H, and W. Each channel gets its own gamma and beta.",
+      "Layer norm example: a transformer tensor has shape (B, T, D). For each token, compute the mean and variance over its D features. No batch values are used.",
+      "RMSNorm: skip the mean. Divide by the root mean square: x / sqrt(mean(x²) + eps), then scale by gamma. It is cheaper and works as well. Llama uses it.",
+      "Placement in transformers: pre-norm applies the norm before attention and the feed-forward block (x + F(norm(x))). It trains more stably in deep stacks than post-norm.",
+      "Group norm splits channels into groups and normalises within each group per sample. It works with small batches. Diffusion U-Nets use it."
+    ],
+    "inside": [
+      "Batch norm at training time uses the statistics of the current batch. It also updates running averages: running = (1 - momentum) × running + momentum × batch_stat. PyTorch momentum is 0.1.",
+      "Batch norm at inference uses the stored running mean and variance. The output of one sample then does not depend on other samples.",
+      "Gap between modes: if the batch is small or unlike the real data, the batch statistics are noisy. The running averages may then not match what the model saw in training.",
+      "Layer norm gives the same computation in training and inference. No running statistics. This is why it suits variable length sequences and batch size of 1 at serving time.",
+      "Batch norm adds a mild noise effect, since each sample's output depends on its batch mates. This acts as a small regulariser.",
+      "Batch norm can be folded into the previous convolution at inference. The scale and shift are merged into the conv weights. This removes the layer cost.",
+      "Normalisation also helps gradients. It keeps activation scale stable across depth, which reduces vanishing and exploding gradients."
+    ],
+    "matters": [
+      "It explains train versus eval differences in vision models.",
+      "It explains why transformers use layer norm: sequences have varying length and padding, and batches can be small in large-model training.",
+      "Pre-norm versus post-norm is a design choice that affects stability of very deep models.",
+      "It is a very common interview comparison. Be ready to state the axes of the statistics."
+    ],
+    "watch": [
+      "Batch norm with batch size 1 or 2 gives very noisy statistics. Use group norm or layer norm, or freeze the batch norm layers.",
+      "Forgetting model.eval() makes batch norm use batch statistics at inference. Results then depend on the batch.",
+      "When you fine-tune with a small batch, running statistics from pretraining can be damaged. Freeze batch norm layers, or keep them in eval mode.",
+      "Padding tokens must not count in layer norm over the sequence axis if you normalise across time. Standard layer norm normalises over features only, so it is safe.",
+      "In distributed training, each GPU sees only its slice of the batch. Standard batch norm uses local statistics unless you use synchronised batch norm."
+    ]
+  },
+  "56": {
+    "short": [
+      "A convolutional neural network (CNN) slides small learned filters over an image to find local patterns. The same filter is used at every position, so the model has few weights and finds a pattern wherever it appears. Pooling and stride shrink the image step by step.",
+      "Early layers find edges. Deep layers find parts and whole objects."
+    ],
+    "picture": [
+      "Think of a small magnifying glass moving across a page. It looks for one pattern, such as a vertical edge. It marks every place where the pattern appears.",
+      "Filter (kernel): a small grid of weights, such as 3 × 3. At each position, multiply the grid with the patch under it and add up the results. The output at that position is one number.",
+      "Feature map: all outputs of one filter over the image. It shows where the pattern is present.",
+      "Channels: a layer has many filters. With 64 filters you get 64 feature maps. An RGB image has 3 input channels, and each filter spans all 3.",
+      "Stride: how far the filter moves each step. Stride 2 halves the width and height. Padding: add a border of zeros so the edges get covered. 'Same' padding keeps the size.",
+      "Pooling: take the max (or average) of each 2 × 2 block. It halves the size and makes the output a little tolerant to small shifts.",
+      "Hierarchy: edges in layer 1, textures and corners in the middle, object parts and objects deep. The receptive field is the part of the input that one unit sees. It grows with depth.",
+      "Example uses: text detection in scans, defect detection on a factory line, medical image segmentation.",
+      "Famous designs: LeNet (digits), AlexNet (2012 ImageNet win), VGG (stacked 3 × 3), ResNet (skip connections), U-Net (segmentation), YOLO (fast detection)."
+    ],
+    "inside": [
+      "Output size = floor((N - F + 2P) / S) + 1. Example: N = 224, F = 3, P = 1, S = 1 gives 224. With S = 2 it gives 112.",
+      "Parameters of a conv layer: F × F × C_in × C_out + C_out. Example: 3 × 3, 64 in, 128 out gives 9 × 64 × 128 + 128 = 73,856. This does not depend on the image size.",
+      "Compare with a dense layer: a 224 × 224 × 3 image has 150,528 values. A dense layer to 1,000 units needs about 150 million weights. A conv layer uses far fewer.",
+      "Two assumptions: locality (nearby pixels matter together) and translation equivariance (a shifted input gives a shifted output). These are inductive biases. They work well with images and need less data than a generic MLP.",
+      "Stacking two 3 × 3 layers gives the same receptive field as one 5 × 5, with fewer weights (18 versus 25 per channel pair) and an extra activation.",
+      "1 × 1 convolution mixes channels at each position. It changes the channel count cheaply, as in ResNet bottlenecks.",
+      "Depthwise separable convolution splits the work into a per-channel spatial filter and a 1 × 1 channel mix. It cuts compute by about 8 to 9 times for 3 × 3. MobileNet uses it. Residual blocks add the input to the output: y = x + F(x). The gradient has a direct path, so 100-plus layers train. A vision transformer (ViT) is the modern alternative. It cuts the image into patches and uses attention."
+    ],
+    "matters": [
+      "CNNs are the base of OCR text detectors, layout models, and defect finders.",
+      "Parameter sharing is a clear example of how a good inductive bias saves data and compute.",
+      "The size and parameter formulas are classic interview calculations.",
+      "Pretrained CNN backbones are the standard start for small vision datasets (topic 61)."
+    ],
+    "watch": [
+      "Wrong tensor layout. PyTorch expects (B, C, H, W). Images from common loaders often come as (H, W, C). Permute before use.",
+      "Pooling can lose fine detail, such as thin strokes in handwriting. Use stride-1 or dilated layers for small text.",
+      "A CNN is not rotation or scale invariant by default. Use augmentation for rotated scans.",
+      "Odd kernel sizes (3, 5) keep the filter centred. Even sizes cause half-pixel shifts and uneven padding.",
+      "Forgetting to normalise input with the same mean and standard deviation used in pretraining gives poor results with pretrained backbones."
+    ]
+  },
+  "57": {
+    "short": [
+      "A recurrent neural network (RNN) reads a sequence one step at a time. It keeps a hidden state that acts as memory and reuses the same weights at each step. LSTM and GRU add gates that control what to keep and what to erase, so they remember over longer ranges.",
+      "Transformers replaced them in most language work, because transformers train in parallel and link distant words directly."
+    ],
+    "picture": [
+      "Think of reading a sentence word by word while keeping notes on a small card. Each new word updates the card. The card is the hidden state.",
+      "Plain RNN: h_t = tanh(W_h · h_(t-1) + W_x · x_t + b). The same W_h and W_x apply at every step.",
+      "Example: predict the next word in 'The invoices from the supplier in Germany were paid in ...'. The word 'Germany' appeared eight words earlier. A plain RNN often forgets it.",
+      "Reason: during training, gradients pass back through every step. They are multiplied by W_h each time. Over 50 steps they vanish or explode (topic 46).",
+      "LSTM adds a cell state c_t, a conveyor belt that runs along the sequence. Three gates, each a sigmoid between 0 and 1, control it.",
+      "Forget gate f: how much of the old cell to keep. Input gate i: how much of the new candidate to write. Output gate o: how much of the cell to show as h_t.",
+      "Update: c_t = f_t × c_(t-1) + i_t × candidate. h_t = o_t × tanh(c_t). The update is additive, so the gradient can flow back through many steps when f is near 1.",
+      "GRU: a lighter design with two gates. The update gate blends old state and new candidate. The reset gate decides how much past state to use in the candidate. It has no separate cell state and has about 25% fewer weights than an LSTM.",
+      "Where they still appear: small on-device models, streaming audio, sensor and time-series data with tight memory limits."
+    ],
+    "inside": [
+      "LSTM parameters: four sets of weights (three gates plus candidate). With input size x and hidden size h, the count is 4 × (h × (h + x) + h). Example: x = 128, h = 256 gives 4 × (256 × 384 + 256) = 394,240.",
+      "Training uses backpropagation through time (BPTT). The network is unrolled for T steps. Gradients flow back through all steps. For long sequences, truncated BPTT cuts the backward path to a window, such as 100 steps.",
+      "The forget gate bias is often initialised to 1. The cell then keeps information by default at the start of training.",
+      "Sequential nature: step t needs step t-1. You cannot compute all steps at once. Training a long sequence is slow on a GPU compared with attention.",
+      "Bidirectional RNN: run one RNN left to right and one right to left. Concatenate the states. It helps tasks where the whole sentence is known, such as tagging. It does not work for live generation.",
+      "Seq2seq: an encoder RNN compresses the input into one vector. A decoder RNN generates the output. A single vector is a bottleneck for long inputs. Attention was invented to fix this, and then transformers dropped the RNN.",
+      "Transformer comparison: self-attention links any two positions in one step, and trains in parallel. Its cost grows with the square of the length. An RNN has a constant memory per step, which suits streaming."
+    ],
+    "matters": [
+      "The question 'why transformers over RNNs' is very common. Answer: parallel training and direct long-range links.",
+      "It shows the idea of gating, which appears again in SwiGLU and in state-space models.",
+      "Modern efficient sequence models such as Mamba and RWKV revisit recurrence for linear-cost inference.",
+      "It ties to vanishing gradients, so it tests deeper understanding."
+    ],
+    "watch": [
+      "Some sequence modules expect time first: (time, batch, features). Many shape bugs come from assuming batch is first.",
+      "Variable length sequences need padding and packing (pack_padded_sequence), or the model reads pad tokens as real input.",
+      "Clip gradients in RNN training. A norm limit near 1 to 5 prevents explosions.",
+      "Do not carry the hidden state across unrelated batches by accident. Reset it, or detach it from the graph if you keep it.",
+      "An LSTM has limits too. It still forgets very long ranges, such as thousands of tokens."
+    ]
+  },
+  "58": {
+    "short": [
+      "An autoencoder squeezes its input into a small code and then rebuilds the input from that code. It needs no labels. The small code forces the network to learn the main structure of the data.",
+      "A variational autoencoder (VAE) makes the code a probability distribution, so you can sample new data from it."
+    ],
+    "picture": [
+      "Think of describing a face in 50 numbers to a sketch artist. The artist redraws the face from only those numbers. If the redraw looks right, the 50 numbers hold the key information.",
+      "Parts: the encoder maps input x to a code z. The decoder maps z back to x_hat. The loss is the difference between x and x_hat, often mean squared error.",
+      "Bottleneck: z is much smaller than x. Example: a 784-pixel digit compressed to 32 numbers. A linear autoencoder learns the same space as PCA. With non-linear layers it learns more.",
+      "Denoising autoencoder: feed in a damaged input (noise, masked pixels) and train to rebuild the clean one. It learns to repair, not copy.",
+      "Anomaly detection example: train on normal machine sensor images only. At run time, a normal image rebuilds well (low error). A cracked part rebuilds badly (high error). Flag high error.",
+      "A plain autoencoder has gaps in its latent space. Pick a random z and the decoder gives garbage. It is not made for generation.",
+      "VAE: the encoder outputs a mean and a variance for z. You sample z from this distribution, then decode. A KL term pulls the distributions toward a standard normal. The latent space becomes smooth and filled, so sampling works.",
+      "Use in modern systems: Stable Diffusion uses a VAE to compress a 512 × 512 × 3 image to a 64 × 64 × 4 latent. That is 48 times fewer values. Diffusion runs in the latent space."
+    ],
+    "inside": [
+      "Autoencoder loss: ||x - x_hat||². Use binary cross-entropy for pixels in the 0 to 1 range.",
+      "VAE loss = reconstruction loss + KL( q(z|x) || N(0, I) ). This is the negative evidence lower bound (ELBO).",
+      "KL for a diagonal Gaussian has a closed form: -0.5 × sum(1 + log(sigma²) - mu² - sigma²). It is zero when mu = 0 and sigma = 1.",
+      "Reparameterisation trick: sampling is not differentiable. Write z = mu + sigma × epsilon, with epsilon from N(0, I). The random part is now an input. Gradients flow through mu and sigma.",
+      "Trade-off: a strong KL weight gives a smooth latent space but blurry outputs. A weak KL weight gives sharper outputs but a messy latent space. The beta-VAE adds a weight to tune this.",
+      "Blurriness: MSE loss averages over many plausible outputs, which makes soft images. This is why GANs and diffusion give sharper images.",
+      "Variants: sparse autoencoders (penalty on active units; used to find features inside language models), VQ-VAE (discrete codes from a codebook), and convolutional autoencoders for images."
+    ],
+    "matters": [
+      "It is the base idea of unsupervised representation learning. You learn useful features with no labels.",
+      "Anomaly detection with reconstruction error is a practical enterprise use, for example fraud or equipment checks.",
+      "The VAE is a component in latent diffusion, so it explains how image generators can run on modest GPUs.",
+      "The reparameterisation trick is a favourite theory question."
+    ],
+    "watch": [
+      "A bottleneck that is too wide lets the network learn the identity function. It copies the input and learns nothing useful. Keep z small, add noise, or add a sparsity penalty.",
+      "A good rebuild of normal data can also rebuild some anomalies, since the network generalises. Check recall of anomalies on labelled examples.",
+      "Posterior collapse: the decoder ignores z and the KL goes to zero. This happens with strong decoders. Use KL annealing (start with a small weight) or a weaker decoder.",
+      "Reconstruction error depends on the image. Bright, detailed images give a higher error even when normal. Normalise per sample or per region.",
+      "A VAE is not a good choice when you need sharp samples. Use diffusion or GANs."
+    ]
+  },
+  "59": {
+    "short": [
+      "A generative adversarial network (GAN) has two networks that compete. The generator makes fake samples from random noise. The discriminator tries to tell fake from real, and the generator learns from the discriminator's feedback.",
+      "GANs make sharp images in one forward pass, but training is unstable. Diffusion models have largely replaced them."
+    ],
+    "picture": [
+      "Think of a forger and a detective. The forger paints fake banknotes. The detective checks them. Each time the detective catches a fake, the forger learns what gave it away. Both get better.",
+      "Generator G: takes a random vector z (for example 128 numbers) and outputs an image.",
+      "Discriminator D: takes an image and outputs the probability that it is real.",
+      "Training loop: take a batch of real images and a batch of fakes from G. Update D to label real as 1 and fake as 0. Then update G so that D labels its fakes as real.",
+      "At the ideal end, G matches the real data distribution and D outputs 0.5 for everything, since it cannot tell the difference.",
+      "Results: StyleGAN made photo-real faces. Pix2Pix and CycleGAN did image-to-image changes such as sketch to photo. GAN loss also sharpens super-resolution models.",
+      "Speed: one forward pass makes an image. Diffusion needs many steps. GANs are still used when speed matters, such as real-time upscaling.",
+      "Why diffusion won for general image generation: stable training, better diversity, and easier text control."
+    ],
+    "inside": [
+      "Objective: min over G, max over D of E[log D(x)] + E[log(1 - D(G(z)))]. This is a two-player minimax game.",
+      "Early in training, D wins easily, so log(1 - D(G(z))) is flat and gives G almost no gradient. The common fix is the non-saturating loss: G maximises log D(G(z)).",
+      "With an optimal D, the objective equals the Jensen-Shannon divergence between real and generated distributions. This has trouble when the two distributions do not overlap, which gives vanishing gradients.",
+      "Wasserstein GAN uses the earth mover's distance with a critic instead. Gradient penalty or spectral normalisation keeps the critic smooth. Training is more stable and the loss correlates better with quality.",
+      "Mode collapse: G finds a few outputs that fool D and makes only those. Example: a face GAN that produces the same ten faces. Diversity is lost.",
+      "Training balance: if D becomes too strong, G gets no signal. If D is too weak, G does not improve. Teams tune learning rates, update ratios, and use tricks such as label smoothing and instance noise.",
+      "Conditional GAN: feed a class label or text to both G and D, so you can control what is generated."
+    ],
+    "matters": [
+      "GANs introduced adversarial training. The idea also appears in domain adaptation and in some safety methods.",
+      "Interviewers ask about them to see if you know what came before diffusion and why it changed.",
+      "Deepfake and synthetic data risks relate to GANs, so they matter for trust and safety.",
+      "Synthetic data from GANs can help to balance rare classes, but quality must be verified."
+    ],
+    "watch": [
+      "GAN loss values do not show image quality. D loss and G loss can both look healthy while images are poor. Judge by samples and metrics.",
+      "Use Fréchet Inception Distance (FID) to compare generated and real feature statistics. Lower is better. Use human review too. FID needs thousands of samples.",
+      "Mode collapse can hide inside a good FID. Also check diversity by looking at many samples.",
+      "Training can diverge suddenly after hours. Save checkpoints often.",
+      "Synthetic images in a training set can leak artefacts. A downstream model may learn GAN fingerprints, not real features."
+    ]
+  },
+  "60": {
+    "short": [
+      "A diffusion model learns to remove noise a little at a time. To make an image, it starts with pure random noise and cleans it up over many steps. Text prompts steer the cleaning so the result matches the description.",
+      "Diffusion trains stably and gives diverse, high-quality images. The cost is that you must run the network many times per image."
+    ],
+    "picture": [
+      "Think of a photo that fades into TV static over 1,000 steps. A diffusion model learns to play this film backward, from static to photo.",
+      "Forward process (fixed, no learning): at each step, mix in a little Gaussian noise. After T steps (often 1,000), the image is pure noise.",
+      "Reverse process (learned): a network takes a noisy image x_t and the step number t. It predicts the noise that was added. We subtract part of it to get a slightly cleaner image. Repeat from t = T down to 0.",
+      "Training is simple. Pick a real image. Pick a random step t. Add noise of the matching size. Ask the network to predict that noise. The loss is the mean squared error between true noise and predicted noise.",
+      "Network type: a U-Net with attention, or a diffusion transformer (DiT). The step t enters as an embedding.",
+      "Text control: a text encoder (CLIP or T5) turns the prompt into vectors. The network reads them through cross-attention at each step.",
+      "Classifier-free guidance: run the network twice, once with the prompt and once without. Push the result away from the 'no prompt' prediction by a guidance scale (for example 7.5). A higher scale follows the prompt more but reduces diversity.",
+      "Latent diffusion (Stable Diffusion): a VAE compresses a 512 × 512 × 3 image to a 64 × 64 × 4 latent. Diffusion runs there. The cost drops by about 48 times in values per step. The VAE decoder makes the final image.",
+      "Speed: the original method needed about 1,000 steps. DDIM and better solvers need 20 to 50. Distillation, consistency models, and flow matching reach 1 to 4 steps."
+    ],
+    "inside": [
+      "Noise schedule: beta_t is the noise added at step t. Let alpha_bar_t = product of (1 - beta_s) for s up to t. It says how much of the original signal is left.",
+      "Closed-form jump: x_t = sqrt(alpha_bar_t) × x_0 + sqrt(1 - alpha_bar_t) × epsilon. You can make any noisy version in one step, with no loop. This makes training fast.",
+      "Training loss: E || epsilon - epsilon_theta(x_t, t) ||². Predicting noise works well. Some models predict the clean image x_0 or a velocity v instead. They are linked by the same formula.",
+      "Sampling step (DDPM): x_(t-1) = (1 / sqrt(alpha_t)) × (x_t - (beta_t / sqrt(1 - alpha_bar_t)) × epsilon_theta) + sigma_t × z. A small random term z keeps the process stochastic. DDIM drops it and gives a deterministic path, which allows bigger steps.",
+      "Cosine schedule keeps more signal in the early steps than a linear schedule. It gives better quality at low resolution.",
+      "Flow matching trains a network to predict the velocity along a straight path from noise to data. Paths are straighter, so fewer steps are needed. Newer image models use it.",
+      "Diffusion is related to score matching. The predicted noise is linked to the gradient of the log density of the data. Inference cost = number of steps × cost of one network call (twice that with guidance)."
+    ],
+    "matters": [
+      "Diffusion is the base of most modern image, video, and audio generation.",
+      "Production cost depends on step count. This is why few-step methods are valuable.",
+      "It shows a pattern: replace one hard task (make an image) with many easy tasks (remove a little noise).",
+      "Understanding it lets you compare with GANs and VAEs in interviews."
+    ],
+    "watch": [
+      "Diffusion does not write pixels one by one like an autoregressive model. It refines the whole image at every step.",
+      "High guidance scale gives burnt colours and low diversity. Too low gives weak prompt following.",
+      "Fewer steps usually cost quality, unless the model was distilled for it. Test the trade-off on your own prompts.",
+      "Training data copyright and memorisation are real risks. Models can reproduce training images in rare cases.",
+      "Text rendering and counting objects remain weak points of many diffusion models."
+    ]
+  },
+  "61": {
+    "short": [
+      "Transfer learning starts from a model pretrained on a large dataset and adapts it to a new, smaller task. Early layers hold general features, so you often freeze them. You train only the later layers or a new head.",
+      "It is the normal starting point for almost all enterprise AI work, since labelled data is usually small."
+    ],
+    "picture": [
+      "Think of hiring an experienced engineer for a new product. They already know the basics. You teach them only the details of your product. That takes days, not years.",
+      "Why it works: early layers of a vision model find edges and textures. Early layers of a language model learn grammar and word meaning. These are useful in almost every task. Later layers are specific to the original task.",
+      "Example, vision: take a ResNet pretrained on ImageNet. Replace the final 1,000-class layer with a 5-class layer for invoice, receipt, contract, ID, and other. Train on 2,000 labelled scans.",
+      "Example, language: take a pretrained language model. Fine-tune it on 3,000 labelled support tickets to classify urgency. Or use LoRA to train a small adapter.",
+      "Rule of thumb on data size. Very small: freeze the whole backbone, train a new head (feature extraction). Medium: unfreeze the top blocks. Large and similar to the pretraining data: fine-tune everything with a small learning rate.",
+      "Domain gap matters. ImageNet features help on photos. They help less on X-rays or scanned forms, so you need to unfreeze more layers.",
+      "Use discriminative learning rates: small rates for early layers, larger for later layers and for the new head. For example 1e-5 for the backbone and 1e-3 for the head.",
+      "Result: higher accuracy with far fewer labels, a shorter training time, and a smaller bill."
+    ],
+    "inside": [
+      "Freezing means setting no-gradient on a parameter. No gradient is computed for it. The optimiser stores no state for it. Memory and time drop.",
+      "Frozen layers still run in the forward pass. Their activations are still needed to feed later layers. You save the backward work and optimiser memory, not the forward compute.",
+      "Feature caching: if the backbone is fully frozen and you use no augmentation, compute its outputs once and train the head on stored features. Training becomes very fast.",
+      "Gradual unfreezing: train the head first for a few epochs. Then unfreeze the top block, then the next, with a lower learning rate for each. This protects pretrained features from large random gradients of a fresh head.",
+      "Parameter-efficient fine-tuning: LoRA adds small low-rank matrices to chosen weights and trains only those, often under 1% of the parameters. The base weights stay frozen. Adapters can be swapped per task or per customer.",
+      "Batch norm needs care. Frozen layers with train-mode batch norm still update running statistics. Put frozen batch norm layers in eval mode.",
+      "Catastrophic forgetting: fine-tuning on a narrow task can erase general skills. Low learning rates, fewer epochs, mixing in general data, and LoRA reduce it."
+    ],
+    "matters": [
+      "Enterprise data sets are small, so almost every shipped model starts from a pretrained one.",
+      "It cuts cost. Fine-tuning a head takes minutes on one GPU. Training from scratch takes weeks.",
+      "It lets teams serve many customers with one base model and many small adapters.",
+      "Interviewers ask when to freeze, when to unfreeze, and how to pick learning rates."
+    ],
+    "watch": [
+      "A large learning rate on pretrained layers destroys the features you wanted to reuse. Use small rates for the backbone.",
+      "Pass only trainable parameters to the optimiser. Otherwise extra state is created for frozen weights.",
+      "Use the same preprocessing as pretraining: image size, mean and standard deviation, and the same tokeniser for text.",
+      "Negative transfer: a pretrained model from a very different domain can do worse than a small model trained from scratch. Compare with a baseline.",
+      "Check the licence and the pretraining data of the base model. Some licences limit commercial use."
+    ]
+  },
+  "62": {
+    "short": [
+      "Machine learning (ML) learns patterns from data to make predictions on new data. The key test is generalisation: how well the model does on data it has not seen. Bias and variance describe the two ways a model can fail to generalise.",
+      "Underfitting means the model is too simple. Overfitting means it memorised the training data."
+    ],
+    "picture": [
+      "Think of a student preparing for an exam. Study notes are the training set. Practice tests are the validation set. The final exam is the test set. You see the final exam only once.",
+      "Training set: the data used to fit the weights. Validation set: the data used to choose settings such as learning rate, model size, and stopping point. Test set: the data used once at the end for the final number.",
+      "Example: 10,000 labelled invoices. Use 7,000 for training, 1,500 for validation, 1,500 for test. Split by vendor or by date if you want to know how the model handles new vendors.",
+      "Underfitting (high bias): the model is too simple, such as a straight line through a curve. Error is high on both training and test data.",
+      "Overfitting (high variance): the model fits noise. Training error is very low and test error is much higher. Example: 99% train accuracy and 80% test accuracy.",
+      "Fix underfitting: a bigger model, better features, longer training, less regularisation.",
+      "Fix overfitting: more data, regularisation (topic 49), a simpler model, early stopping, data augmentation, and cross-validation to tune.",
+      "Learning curves help to diagnose. Plot error against training set size. If both curves are high and close, add model power. If there is a large gap, add data or regularise.",
+      "Types of learning: supervised (labelled pairs), unsupervised (find structure with no labels), self-supervised (labels made from the data itself, as in language modelling), and reinforcement learning (learn from rewards)."
+    ],
+    "inside": [
+      "Error decomposition for squared loss: expected error = bias² + variance + irreducible noise. Bias is the gap between the average model and the truth. Variance is how much the model changes with a different training sample. Noise is the part no model can predict.",
+      "Complexity trade-off: as the model grows, bias falls and variance rises. The test error is U-shaped, with a best point in the middle.",
+      "Modern note: very large networks can show 'double descent'. Test error rises near the point where the model just fits the training data, and falls again with more size. The simple U shape is a guide, not a law.",
+      "K-fold cross-validation: split the data into k parts. Train on k-1 parts and validate on the remaining one. Repeat k times and average. It gives a steadier estimate on small data.",
+      "Ensembles lower variance. Averaging many models, as in random forests, cancels their independent errors. Boosting lowers bias by fitting the remaining error step by step.",
+      "Data leakage happens when information from the test set reaches training. Examples: scaling with statistics from all data, duplicates across splits, and features that contain the answer.",
+      "Metrics must fit the task. For uneven classes, use precision, recall, and F1, not accuracy alone. For ranking, use metrics such as NDCG. For regression, use MAE or RMSE. Distribution shift: production data differs from training data. A model that generalised to the test set can still fail later."
+    ],
+    "matters": [
+      "Every model review ends with the question: how do you know it will work on new data?",
+      "It guides what to do next. Is the problem the model, the data, or the settings?",
+      "A clean split and honest metrics are what separate lab results from production results.",
+      "These ideas apply to LLM work too: evaluation sets, fine-tuning overfit, and leakage of benchmark data into training."
+    ],
+    "watch": [
+      "Tuning on the test set gives numbers that look good and collapse in production. Touch the test set once.",
+      "Random splits can leak when records are related, such as many pages from one document, or many rows for one customer. Split by group.",
+      "For time series, never shuffle. Train on the past and test on the future.",
+      "Accuracy can mislead on uneven classes. A model that says 'not fraud' for all cases scores 99% when fraud is 1%.",
+      "Do not fix an underfit model with more regularisation, or an overfit model with more layers. Diagnose first with train and validation error."
+    ]
+  }
+}
