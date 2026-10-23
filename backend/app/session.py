@@ -31,6 +31,7 @@ class DebugDifficulty(str, Enum):
 
 class Phase(str, Enum):
     lobby = "lobby"
+    intro = "intro"
     debug = "debug"
     design = "design"
     llm = "llm"
@@ -38,7 +39,14 @@ class Phase(str, Enum):
     done = "done"
 
 
-PHASE_ORDER = [Phase.debug, Phase.design, Phase.llm, Phase.feedback, Phase.done]
+PHASE_ORDER = [
+    Phase.intro,
+    Phase.debug,
+    Phase.design,
+    Phase.llm,
+    Phase.feedback,
+    Phase.done,
+]
 
 
 @dataclass
@@ -46,6 +54,7 @@ class ChatMessage:
     role: str
     content: str
     ts: float = field(default_factory=time.time)
+    phase: str = ""
 
 
 @dataclass
@@ -64,6 +73,8 @@ class InterviewSession:
     design_prompt: dict[str, Any] = field(default_factory=dict)
     design_labels: list[str] = field(default_factory=list)
     llm_topics: list[dict[str, str]] = field(default_factory=list)
+    llm_topic_index: int = 0
+    scorecard: dict[str, Any] | None = None
     created_at: float = field(default_factory=time.time)
 
     def context(self) -> dict[str, Any]:
@@ -83,6 +94,7 @@ class InterviewSession:
             "run_style": self.run_style.value,
             "mode": self.mode.value,
             "llm_topics": self.llm_topics,
+            "llm_topic_index": self.llm_topic_index,
         }
 
     def live_briefing(self) -> str:
@@ -93,13 +105,30 @@ class InterviewSession:
             run_style=self.run_style.value,
         )
 
+    def llm_topic_briefing(self) -> str:
+        topics = self.llm_topics
+        if not topics:
+            return self.live_briefing()
+        idx = max(0, min(self.llm_topic_index, len(topics) - 1))
+        tech = topics[idx].get("technique") or "this topic"
+        cat = topics[idx].get("category") or ""
+        return (
+            "[SYSTEM TOPIC NAV — do not restart the interview]\n"
+            f"Stay in LLM techniques phase. Candidate jumped to topic "
+            f"{idx + 1}/{len(topics)}"
+            + (f" [{cat}]" if cat else "")
+            + f".\nAsk ONLY: Define {tech}.\n"
+            "One short question. STOP and wait. Do not teach. Do not wrap up."
+        )
+
     def phase_budget_seconds(self) -> int:
         s = get_settings()
         return {
+            Phase.intro: s.intro_seconds,
             Phase.debug: s.debug_seconds,
             Phase.design: s.design_seconds,
             Phase.llm: s.llm_seconds,
-            Phase.feedback: 90,
+            Phase.feedback: 180,
         }.get(self.phase, 0)
 
     def seconds_remaining(self) -> int:
@@ -117,8 +146,24 @@ class InterviewSession:
             run_style=self.run_style.value,
         )
 
+    def append(self, role: str, content: str) -> None:
+        self.messages.append(
+            ChatMessage(
+                role=role,
+                content=content,
+                phase=self.phase.value,
+            )
+        )
+
     def to_public(self) -> dict[str, Any]:
         ctx = self.context()
+        topics_public = [
+            {
+                "technique": t.get("technique", ""),
+                "category": t.get("category", ""),
+            }
+            for t in self.llm_topics
+        ]
         return {
             "id": self.id,
             "mode": self.mode.value,
@@ -130,9 +175,17 @@ class InterviewSession:
             "code_panel": self.code_panel,
             "design_prompt": ctx["design"] if self.phase == Phase.design else None,
             "drill_title": self.drill_title if self.phase == Phase.debug else None,
+            "llm_topics": topics_public if self.phase == Phase.llm else topics_public,
+            "llm_topic_index": self.llm_topic_index,
+            "scorecard": self.scorecard,
             "messages": [
-                {"role": m.role, "content": m.content, "ts": m.ts}
-                for m in self.messages[-40:]
+                {
+                    "role": m.role,
+                    "content": m.content,
+                    "ts": m.ts,
+                    "phase": m.phase,
+                }
+                for m in self.messages[-80:]
             ],
         }
 
@@ -156,11 +209,15 @@ class SessionStore:
             mode=mode,
             run_style=run_style,
             debug_difficulty=difficulty,
-            phase=Phase.debug,
+            phase=Phase.intro,
             phase_started_at=time.time(),
-            code_panel="Generating unique debug snippet…",
-            drill_title="Generating…",
+            code_panel="",
+            drill_title="",
         )
+        line = opening_line(
+            Phase.intro.value, session.context(), session.run_style.value
+        )
+        session.append("assistant", line)
         self._sessions[session.id] = session
         return session
 
@@ -169,11 +226,6 @@ class SessionStore:
         session.code_panel = str(drill.get("code") or "")
         session.hidden_bugs = list(drill.get("hidden_bugs") or [])
         session.cascade_note = str(drill.get("cascade_note") or "")
-        if not session.messages:
-            line = opening_line(
-                Phase.debug.value, session.context(), session.run_style.value
-            )
-            session.messages.append(ChatMessage(role="assistant", content=line))
 
     def apply_design(self, session: InterviewSession, design: dict[str, Any]) -> None:
         session.design_prompt = {
@@ -198,19 +250,34 @@ class SessionStore:
             session.code_panel = ""
         if nxt == Phase.llm and not session.llm_topics:
             session.llm_topics = sample_session_topics()
-        if nxt == Phase.done:
-            return session
-        # Opening for design is appended after design prompt is applied (async)
-        if nxt != Phase.design:
+            session.llm_topic_index = 0
+        # Openings that need async prep are appended by the API layer
+        if nxt not in (Phase.debug, Phase.design, Phase.feedback, Phase.done):
             line = opening_line(nxt.value, session.context(), session.run_style.value)
-            session.messages.append(ChatMessage(role="assistant", content=line))
+            session.append("assistant", line)
         return session
 
-    def append_design_opening(self, session: InterviewSession) -> None:
+    def append_phase_opening(self, session: InterviewSession) -> None:
         line = opening_line(
-            Phase.design.value, session.context(), session.run_style.value
+            session.phase.value, session.context(), session.run_style.value
         )
-        session.messages.append(ChatMessage(role="assistant", content=line))
+        session.append("assistant", line)
+
+    def append_design_opening(self, session: InterviewSession) -> None:
+        self.append_phase_opening(session)
+
+    def set_llm_topic(self, session: InterviewSession, index: int) -> str:
+        if not session.llm_topics:
+            session.llm_topics = sample_session_topics()
+        n = len(session.llm_topics)
+        session.llm_topic_index = max(0, min(index, n - 1))
+        tech = session.llm_topics[session.llm_topic_index].get("technique") or "this"
+        line = (
+            f"Let's revisit topic {session.llm_topic_index + 1} of {n}. "
+            f"Define {tech}."
+        )
+        session.append("assistant", line)
+        return session.llm_topic_briefing()
 
     def maybe_auto_advance(self, session: InterviewSession) -> bool:
         if session.phase in (Phase.lobby, Phase.done, Phase.feedback):

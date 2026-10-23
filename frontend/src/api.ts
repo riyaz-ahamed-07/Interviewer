@@ -5,7 +5,39 @@ const API_BASE = String(
 export type Mode = "soft" | "medium" | "strict" | "hardcore";
 export type RunStyle = "practice" | "interview";
 export type DebugDifficulty = "easy" | "medium" | "hard";
-export type Phase = "lobby" | "debug" | "design" | "llm" | "feedback" | "done";
+export type Phase =
+  | "lobby"
+  | "intro"
+  | "debug"
+  | "design"
+  | "llm"
+  | "feedback"
+  | "done";
+
+export type ChatMsg = {
+  role: string;
+  content: string;
+  ts: number;
+  phase?: string;
+};
+
+export type Scorecard = {
+  score: number;
+  summary: string;
+  strengths: string[];
+  improve: string[];
+  focus_next: string[];
+  english: {
+    fillers_to_avoid?: string[];
+    manner?: string;
+    answer_openers?: string[];
+    notes?: string[];
+  };
+  by_phase?: Record<string, string>;
+  copy_text: string;
+};
+
+export type LlmTopic = { technique: string; category: string };
 
 export type Session = {
   id: string;
@@ -23,7 +55,10 @@ export type Session = {
     ask: string;
   } | null;
   drill_title: string | null;
-  messages: { role: string; content: string; ts: number }[];
+  llm_topics: LlmTopic[];
+  llm_topic_index: number;
+  scorecard: Scorecard | null;
+  messages: ChatMsg[];
 };
 
 export class SessionGoneError extends Error {
@@ -87,12 +122,45 @@ export async function getSession(id: string) {
   return json<{ session: Session }>(`/api/session/${id}`);
 }
 
-export async function advanceSession(id: string) {
+export async function advanceSession(id: string, messages?: ChatMsg[]) {
   return json<{ session: Session; live_briefing?: string }>(
     `/api/session/${id}/advance`,
     {
       method: "POST",
-      body: JSON.stringify({ reason: "manual" }),
+      body: JSON.stringify({
+        reason: "manual",
+        messages: messages?.map((m) => ({
+          role: m.role,
+          content: m.content,
+          ts: m.ts,
+          phase: m.phase ?? "",
+        })),
+      }),
+    },
+  );
+}
+
+export async function logTurn(
+  id: string,
+  role: "user" | "assistant",
+  content: string,
+) {
+  return json<{ ok: boolean }>(`/api/session/${id}/log`, {
+    method: "POST",
+    body: JSON.stringify({ role, content }),
+  });
+}
+
+export async function navigateLlmTopic(
+  id: string,
+  direction: "prev" | "next" | "goto",
+  index?: number,
+) {
+  return json<{ session: Session; live_briefing?: string }>(
+    `/api/session/${id}/llm/topic`,
+    {
+      method: "POST",
+      body: JSON.stringify({ direction, index }),
     },
   );
 }
@@ -117,7 +185,6 @@ export async function submitDiagram(
   const fd = new FormData();
   fd.append("file", blob, "diagram.png");
   fd.append("note", note);
-  // labels go via a prior turn or note
   if (labels.length) {
     fd.set("note", `${note}\nLabels: ${labels.join(", ")}`);
   }

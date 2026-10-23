@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     groq_text_model: str = "groq/qwen/qwen3.8-27b"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    intro_seconds: int = 3 * 60
     debug_seconds: int = 10 * 60
     design_seconds: int = 12 * 60
     llm_seconds: int = 25 * 60

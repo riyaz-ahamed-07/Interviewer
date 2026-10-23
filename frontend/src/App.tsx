@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   advanceSession,
   getSession,
   health,
+  logTurn,
+  navigateLlmTopic,
   SessionGoneError,
   speakFallback,
   startSession,
@@ -14,7 +16,10 @@ import {
   type Session,
 } from "./api";
 import { Board, type CanvasScene } from "./components/Board";
+import { CodePanel } from "./components/CodePanel";
+import { ScorecardPanel } from "./components/ScorecardPanel";
 import { useLiveVoice } from "./hooks/useLiveVoice";
+import { latestTopicCue } from "./lib/topicCue";
 import "./App.css";
 
 const TONES: { id: Mode; label: string; blurb: string }[] = [
@@ -36,20 +41,37 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
+  const sessionIdRef = useRef<string | null>(null);
+  const phaseRef = useRef<string>("lobby");
+
   const onTurn = useCallback((role: "user" | "assistant", text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const sid = sessionIdRef.current;
+    const phase = phaseRef.current;
     setSession((prev) => {
-      if (!prev || !text.trim()) return prev;
+      if (!prev) return prev;
       return {
         ...prev,
         messages: [
           ...prev.messages,
-          { role, content: text, ts: Date.now() / 1000 },
+          { role, content: trimmed, ts: Date.now() / 1000, phase },
         ],
       };
     });
+    if (sid) {
+      void logTurn(sid, role, trimmed).catch(() => {
+        /* non-fatal — sync on advance still covers scoring */
+      });
+    }
   }, []);
 
   const live = useLiveVoice(onTurn);
+
+  useEffect(() => {
+    sessionIdRef.current = session?.id ?? null;
+    phaseRef.current = session?.phase ?? "lobby";
+  }, [session?.id, session?.phase]);
 
   const bumpToLobby = useCallback(
     (reason: string) => {
@@ -88,6 +110,12 @@ export default function App() {
                   : r.session.messages,
               code_panel: r.session.code_panel || prev.code_panel,
               drill_title: r.session.drill_title ?? prev.drill_title,
+              scorecard: r.session.scorecard ?? prev.scorecard,
+              llm_topics: r.session.llm_topics?.length
+                ? r.session.llm_topics
+                : prev.llm_topics,
+              llm_topic_index:
+                r.session.llm_topic_index ?? prev.llm_topic_index,
             };
           }),
         )
@@ -107,7 +135,14 @@ export default function App() {
     const el = transcriptRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [session?.messages.length]);
+  }, [session?.messages.length, live.userPartial, live.assistantPartial]);
+
+  const llmCue = useMemo(() => {
+    if (!session || session.phase !== "llm") return null;
+    const queued = session.llm_topics?.[session.llm_topic_index ?? 0]?.technique;
+    if (queued) return queued;
+    return latestTopicCue(session.messages, live.assistantPartial);
+  }, [session, live.assistantPartial]);
 
   const playTts = async (text: string) => {
     if (!text.trim()) return;
@@ -131,7 +166,7 @@ export default function App() {
       );
       setSession(s);
       setStatusLine(
-        `${s.run_style} · debug ${s.debug_difficulty} · ${s.drill_title ?? ""}`,
+        `${s.run_style} · ${s.debug_difficulty} · starts with intro`,
       );
       if (wantLive) {
         try {
@@ -236,8 +271,12 @@ export default function App() {
 
   const nextPhase = async () => {
     if (!session) return;
+    setBusy(true);
     try {
-      const { session: s, live_briefing } = await advanceSession(session.id);
+      const { session: s, live_briefing } = await advanceSession(
+        session.id,
+        session.messages,
+      );
       setSession(s);
       const line = s.messages.at(-1)?.content ?? "";
       if (voiceActive) {
@@ -248,7 +287,35 @@ export default function App() {
         bumpToLobby(
           "Session expired (backend reloaded). Start a new interview.",
         );
+      } else setStatusLine(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const jumpTopic = async (direction: "prev" | "next") => {
+    if (!session || session.phase !== "llm") return;
+    setBusy(true);
+    try {
+      const { session: s, live_briefing } = await navigateLlmTopic(
+        session.id,
+        direction,
+      );
+      setSession(s);
+      if (voiceActive && live_briefing) {
+        live.sendPhaseSync(live_briefing);
+      } else {
+        const line = s.messages.at(-1)?.content ?? "";
+        await playTts(line);
       }
+    } catch (e) {
+      if (e instanceof SessionGoneError) {
+        bumpToLobby(
+          "Session expired (backend reloaded). Start a new interview.",
+        );
+      } else setStatusLine(String(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -391,9 +458,46 @@ export default function App() {
               {live.paused ? "Resume voice" : "Pause voice"}
             </button>
           )}
-          <button type="button" onClick={() => void nextPhase()}>
-            Next phase
-          </button>
+          {session.phase === "llm" && (
+            <>
+              <button
+                type="button"
+                disabled={busy || session.llm_topic_index <= 0}
+                onClick={() => void jumpTopic("prev")}
+              >
+                ← Prev topic
+              </button>
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  session.llm_topic_index >=
+                    Math.max(0, (session.llm_topics?.length ?? 1) - 1)
+                }
+                onClick={() => void jumpTopic("next")}
+              >
+                Next topic →
+              </button>
+            </>
+          )}
+          {session.phase !== "done" && session.phase !== "feedback" && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void nextPhase()}
+            >
+              Next phase
+            </button>
+          )}
+          {session.phase === "feedback" && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void nextPhase()}
+            >
+              Finish
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -417,6 +521,17 @@ export default function App() {
 
       <div className="main-grid">
         <section className="panel work">
+          {session.phase === "intro" && (
+            <div className="llm-hint">
+              <p className="llm-kicker">Part 0</p>
+              <h2 className="llm-cue">Tell me about yourself</h2>
+              <p className="llm-coach">
+                Background, ML focus, and what you want from this role. About
+                one minute.
+              </p>
+            </div>
+          )}
+
           {session.phase === "debug" && (
             <div className="work-fill debug-fill">
               <button
@@ -428,7 +543,7 @@ export default function App() {
               >
                 Copy for Colab
               </button>
-              <pre className="code">{session.code_panel}</pre>
+              <CodePanel code={session.code_panel} />
             </div>
           )}
 
@@ -440,21 +555,56 @@ export default function App() {
             />
           )}
 
-          {(session.phase === "llm" || session.phase === "feedback") && (
+          {session.phase === "llm" && (
             <div className="llm-hint">
-              <h2>
-                {session.phase === "feedback" ? "Feedback" : "LLM techniques"}
-              </h2>
-              <p>Talk. Definition first, then stop.</p>
+              <p className="llm-kicker">
+                Topic {(session.llm_topic_index ?? 0) + 1}
+                {session.llm_topics?.length
+                  ? ` / ${session.llm_topics.length}`
+                  : ""}
+              </p>
+              {llmCue ? (
+                <h2 className="llm-cue">{llmCue}</h2>
+              ) : (
+                <h2 className="llm-cue llm-cue-wait">
+                  Waiting for next topic…
+                </h2>
+              )}
+              <p className="llm-coach">Say the definition. Then stop.</p>
+              {session.llm_topics?.length ? (
+                <p className="topic-rail">
+                  {session.llm_topics.map((t, i) => (
+                    <span
+                      key={`${t.technique}-${i}`}
+                      className={
+                        i === session.llm_topic_index
+                          ? "topic-chip on"
+                          : i < session.llm_topic_index
+                            ? "topic-chip done"
+                            : "topic-chip"
+                      }
+                    >
+                      {t.technique}
+                    </span>
+                  ))}
+                </p>
+              ) : null}
             </div>
           )}
 
-          {session.phase === "done" && (
-            <div className="llm-hint">
-              <h2>Done</h2>
-              <p>Mock complete.</p>
-            </div>
-          )}
+          {(session.phase === "feedback" || session.phase === "done") &&
+            (session.scorecard ? (
+              <ScorecardPanel card={session.scorecard} />
+            ) : (
+              <div className="llm-hint">
+                <h2 className="llm-cue llm-cue-wait">
+                  Building your scorecard…
+                </h2>
+                <p className="llm-coach">
+                  Groq is scoring the full transcript.
+                </p>
+              </div>
+            ))}
         </section>
 
         <section className="panel transcript">
@@ -466,6 +616,24 @@ export default function App() {
                 <p>{m.content}</p>
               </div>
             ))}
+            {live.userPartial.trim() ? (
+              <div className="msg user live">
+                <span>You</span>
+                <p>
+                  {live.userPartial}
+                  <span className="live-caret" aria-hidden="true" />
+                </p>
+              </div>
+            ) : null}
+            {live.assistantPartial.trim() ? (
+              <div className="msg assistant live">
+                <span>Interviewer</span>
+                <p>
+                  {live.assistantPartial}
+                  <span className="live-caret" aria-hidden="true" />
+                </p>
+              </div>
+            ) : null}
           </div>
 
           <div className="compose">

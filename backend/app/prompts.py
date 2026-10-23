@@ -54,6 +54,19 @@ Global:
 - When asking for LLM definitions later: definition first, then stop.
 """
 
+    if phase == "intro":
+        return (
+            base
+            + """
+Current phase: Part 0 — Tell me about yourself (~3 min).
+Ask once: tell me about yourself (background, ML focus, what you want from this role).
+Listen. Ask at most ONE short follow-up if they are vague.
+Do NOT start debugging or technique questions yet.
+When they finish a solid intro, acknowledge briefly and wait for phase advance.
+Keep replies short for voice.
+"""
+        )
+
     if phase == "debug":
         title = context.get("drill_title") or "PyTorch debug"
         code = context.get("code") or ""
@@ -156,7 +169,9 @@ HARD RULES (non-negotiable):
         return (
             base
             + """
-Closing feedback (60–90s). Honest: what was solid, what to drill. No false praise.
+Closing: a written scorecard is on their screen. Speak 2–4 short sentences:
+highlight one strength, one improvement, then stop. Do not invent a numeric score aloud
+unless they ask — the card already has it. No false praise.
 """
         )
 
@@ -164,12 +179,18 @@ Closing feedback (60–90s). Honest: what was solid, what to drill. No false pra
 
 
 def opening_line(phase: str, context: dict, run_style: str = "interview") -> str:
+    if phase == "intro":
+        return (
+            "Before we dive into code — tell me about yourself. "
+            "Background, what you've been building in ML, and what you want from this role. "
+            "Take about a minute."
+        )
     if phase == "debug":
         title = context.get("drill_title") or "PyTorch debug"
         diff = context.get("debug_difficulty") or "medium"
         style = "practice" if run_style == "practice" else "interview"
         return (
-            f"We'll start with a PyTorch debug — {title}, difficulty {diff}, "
+            f"Next up: PyTorch debug — {title}, difficulty {diff}, "
             f"{style} mode. The broken snippet is on your screen. Paste it into Colab, "
             f"run it, and talk me through what you find. About ten minutes."
         )
@@ -190,7 +211,10 @@ def opening_line(phase: str, context: dict, run_style: str = "interview") -> str
             f"Ready for the first one?"
         )
     if phase == "feedback":
-        return "That's time. Quick feedback."
+        return (
+            "That's time. Your written scorecard is on the left — "
+            "I'll give a short spoken wrap-up."
+        )
     return "Let's begin."
 
 
@@ -203,9 +227,21 @@ def live_phase_briefing(
 ) -> str:
     """Re-inject phase rules mid-call (Gemini Live keeps the initial system prompt)."""
     system = build_system_prompt(tone, phase, context, run_style=run_style)
+    if phase == "intro":
+        return (
+            "[SYSTEM PHASE UPDATE — discard prior phase goals]\n"
+            f"{system}\n\n"
+            "Phase is Part 0 — intro. Ask: tell me about yourself. Then listen. "
+            "At most one short follow-up. Do not start coding questions yet."
+        )
     if phase == "llm":
         queued = context.get("llm_topics") or []
-        first = queued[0]["technique"] if queued else "the first topic"
+        idx = int(context.get("llm_topic_index") or 0)
+        if queued:
+            idx = max(0, min(idx, len(queued) - 1))
+            first = queued[idx]["technique"]
+        else:
+            first = "the first topic"
         n = len(queued) or 12
         return (
             "[SYSTEM PHASE UPDATE — discard prior phase goals]\n"

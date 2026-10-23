@@ -39,6 +39,7 @@ main{padding:26px 46px 120px;max-width:1180px}
 .hero h1 span{color:var(--red)}
 .hero .sub{font-size:23px;color:var(--blue);margin:4px 0}
 .hero .by{font-family:"Caveat",cursive;font-size:24px;color:var(--faint)}
+.tools .lbl-short{display:none}
 .tools{position:sticky;top:0;z-index:5;background:var(--paper);padding:10px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-bottom:1px dashed rgba(29,43,79,.25)}
 #q{font:inherit;font-size:18px;flex:1;min-width:220px;padding:6px 12px;border:2px solid var(--ink);background:#fff;color:var(--ink);border-radius:255px 15px 225px 15px/15px 225px 15px 255px;outline:none}
 #q:focus{border-color:var(--blue);box-shadow:2px 3px 0 rgba(31,79,163,.2)}
@@ -92,12 +93,20 @@ details.flash summary{cursor:pointer;font-family:"Kalam",cursive;font-weight:700
 #nores{display:none;font-size:22px;color:var(--red);margin:30px 0}
 @media (max-width:900px){
  .layout{grid-template-columns:1fr}
- nav#toc{position:fixed;inset:0 25% 0 0;z-index:20;transform:translateX(-105%);transition:transform .2s;box-shadow:4px 0 20px rgba(0,0,0,.15)}
+ nav#toc{position:fixed;inset:0 18% 0 0;z-index:20;transform:translateX(-105%);transition:transform .2s;box-shadow:4px 0 20px rgba(0,0,0,.15)}
  nav#toc.open{transform:none}
  #menu{display:inline-block}
- main{padding:14px 14px 80px}
- .hero h1{font-size:32px}
- body{font-size:18px}
+ main{padding:10px 10px 72px}
+ .hero{padding-bottom:6px;margin-bottom:4px}
+ .hero h1{font-size:26px;margin:0}
+ .hero .sub,.hero .by,.hero .howto{display:none}
+ body{font-size:17px}
+ .tools{flex-wrap:nowrap;gap:5px;padding:6px 0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+ .tools .btn{padding:2px 8px;font-size:14px;line-height:1.2;flex:none;white-space:nowrap}
+ .tools .lbl-full{display:none}
+ .tools .lbl-short{display:inline}
+ #q{min-width:0;flex:1 1 auto;font-size:14px;padding:4px 8px}
+ #prog{font-size:15px;white-space:nowrap;flex:none}
 }
 @media print{nav#toc,.tools{display:none}.layout{display:block}.topic.collapsed .tb{display:block}.topic{break-inside:avoid-page}}
 </style>
@@ -116,12 +125,12 @@ details.flash summary{cursor:pointer;font-family:"Kalam",cursive;font-weight:700
 <p class="howto">How to use: open a topic → read <b>In short</b> → study the diagram → walk <b>Picture it</b> and <b>How it works</b> → check <b>Watch out</b>. Mark Understood when you can explain it aloud without the page.</p>
 </header>
 <div class="tools">
-<button class="btn" id="menu">☰ Contents</button>
-<input id="q" type="search" placeholder="Search topics…  (press / )" aria-label="Search topics">
-<button class="btn" id="expand">expand all</button>
-<button class="btn" id="collapse">collapse all</button>
-<button class="btn" id="todo">only not-understood</button>
-<button class="btn" id="reset">reset marks</button>
+<button class="btn" id="menu" title="Contents"><span class="lbl-full">☰ Contents</span><span class="lbl-short">☰</span></button>
+<input id="q" type="search" placeholder="Search…" aria-label="Search topics">
+<button class="btn" id="expand" title="Expand all"><span class="lbl-full">expand all</span><span class="lbl-short">EA</span></button>
+<button class="btn" id="collapse" title="Collapse all"><span class="lbl-full">collapse all</span><span class="lbl-short">CA</span></button>
+<button class="btn" id="todo" title="Only not-understood"><span class="lbl-full">only not-understood</span><span class="lbl-short">Open</span></button>
+<button class="btn" id="reset" title="Reset marks"><span class="lbl-full">reset marks</span><span class="lbl-short">Rst</span></button>
 <span id="prog"></span>
 </div>
 <p id="nores">No topic matches that search.</p>
@@ -307,7 +316,7 @@ const topics=[...document.querySelectorAll(".topic")];
 const tocItems={}; document.querySelectorAll(".ti").forEach(li=>tocItems[li.dataset.id]=li);
 const prog=document.getElementById("prog");
 function save(){try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}}
-function refresh(){let n=0;topics.forEach(t=>{const d=!!st[t.id];t.classList.toggle("done",d);tocItems[t.id]&&tocItems[t.id].classList.toggle("done",d);t.querySelector(".und input").checked=d;if(d)n++});prog.textContent=n+" / "+topics.length+" understood"}
+function refresh(){let n=0;topics.forEach(t=>{const d=!!st[t.id];t.classList.toggle("done",d);tocItems[t.id]&&tocItems[t.id].classList.toggle("done",d);t.querySelector(".und input").checked=d;if(d)n++});prog.textContent=(window.matchMedia("(max-width:900px)").matches?(n+"/"+topics.length):(n+" / "+topics.length+" understood"))}
 document.querySelectorAll(".und input").forEach(cb=>cb.addEventListener("change",()=>{if(cb.checked)st[cb.dataset.id]=1;else delete st[cb.dataset.id];save();refresh();applyFilter()}));
 topics.forEach(t=>{const f=()=>t.classList.toggle("collapsed");t.querySelector(".tog").addEventListener("click",f);t.querySelector("h3").addEventListener("click",f)});
 document.getElementById("expand").onclick=()=>topics.forEach(t=>t.classList.remove("collapsed"));
