@@ -272,13 +272,23 @@ export default function App() {
     return (
       <div className="shell lobby">
         <header>
-          <p className="eyebrow">RAP ML Intern · Mock</p>
-          <h1>Interviewer</h1>
+          <p className="eyebrow">Same notebook feel as the master notes</p>
+          <h1>
+            ML Mock <span>Interviewer</span>
+          </h1>
           <p className="lede">
-            Each run generates a new chained PyTorch debug (bugs that cascade).
-            Practice = hints. Interview = no help.
+            Each run builds a new chained debug. Practice gives hints. Interview
+            does not.
           </p>
           <p className="status">{statusLine}</p>
+          <p className="lede">
+            <a
+              className="notes-link"
+              href="/notes/ml-engineer-interview-notes.html"
+            >
+              Open master notes →
+            </a>
+          </p>
         </header>
 
         <p className="section-label">Run style</p>
