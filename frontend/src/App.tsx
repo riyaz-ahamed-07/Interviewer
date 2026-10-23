@@ -39,6 +39,7 @@ export default function App() {
   const [statusLine, setStatusLine] = useState("Checking backend…");
   const [wantLive, setWantLive] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [phasePrep, setPhasePrep] = useState(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   const sessionIdRef = useRef<string | null>(null);
@@ -139,7 +140,8 @@ export default function App() {
 
   const llmCue = useMemo(() => {
     if (!session || session.phase !== "llm") return null;
-    const queued = session.llm_topics?.[session.llm_topic_index ?? 0]?.technique;
+    const queued =
+      session.llm_topics?.[session.llm_topic_index ?? 0]?.technique;
     if (queued) return queued;
     return latestTopicCue(session.messages, live.assistantPartial);
   }, [session, live.assistantPartial]);
@@ -153,6 +155,40 @@ export default function App() {
     } catch {
       /* silent */
     }
+  };
+
+  const phaseStillPreparing = (s: Session) => {
+    if (s.phase === "debug" && s.code_panel.startsWith("Generating"))
+      return true;
+    if (
+      s.phase === "design" &&
+      (!s.design_prompt || s.design_prompt.id === "pending")
+    )
+      return true;
+    if ((s.phase === "feedback" || s.phase === "done") && !s.scorecard)
+      return true;
+    return false;
+  };
+
+  const pollPhaseReady = async (id: string, phase: Session["phase"]) => {
+    for (let i = 0; i < 90; i++) {
+      await new Promise((r) => setTimeout(r, 400));
+      try {
+        const { session: s } = await getSession(id);
+        setSession(s);
+        if (s.phase !== phase || !phaseStillPreparing(s)) {
+          return s;
+        }
+      } catch (e) {
+        if (e instanceof SessionGoneError) {
+          bumpToLobby(
+            "Session expired (backend reloaded). Start a new interview.",
+          );
+          return null;
+        }
+      }
+    }
+    return null;
   };
 
   const start = async () => {
@@ -270,26 +306,51 @@ export default function App() {
   );
 
   const nextPhase = async () => {
-    if (!session) return;
+    if (!session || phasePrep) return;
     setBusy(true);
+    setStatusLine("Switching phase…");
     try {
-      const { session: s, live_briefing } = await advanceSession(
-        session.id,
-        session.messages,
-      );
+      const {
+        session: s,
+        live_briefing,
+        preparing,
+      } = await advanceSession(session.id, session.messages);
       setSession(s);
-      const line = s.messages.at(-1)?.content ?? "";
-      if (voiceActive) {
-        live.sendPhaseSync(live_briefing ?? line);
-      } else await playTts(line);
+      setBusy(false);
+
+      const speak = (ready: Session, briefing?: string) => {
+        const line = ready.messages.at(-1)?.content ?? "";
+        if (voiceActive) {
+          live.sendPhaseSync(briefing ?? line);
+        } else {
+          void playTts(line);
+        }
+      };
+
+      if (preparing || phaseStillPreparing(s)) {
+        setPhasePrep(true);
+        setStatusLine("Preparing next part…");
+        if (voiceActive && live_briefing) {
+          live.sendPhaseSync(live_briefing);
+        }
+        const ready = await pollPhaseReady(s.id, s.phase);
+        setPhasePrep(false);
+        if (ready) {
+          setStatusLine(`${ready.phase} · ${ready.run_style}`);
+          speak(ready);
+        }
+      } else {
+        setStatusLine(`${s.phase} · ${s.run_style}`);
+        speak(s, live_briefing);
+      }
     } catch (e) {
       if (e instanceof SessionGoneError) {
         bumpToLobby(
           "Session expired (backend reloaded). Start a new interview.",
         );
       } else setStatusLine(String(e));
-    } finally {
       setBusy(false);
+      setPhasePrep(false);
     }
   };
 
@@ -302,11 +363,11 @@ export default function App() {
         direction,
       );
       setSession(s);
+      setBusy(false);
       if (voiceActive && live_briefing) {
         live.sendPhaseSync(live_briefing);
       } else {
-        const line = s.messages.at(-1)?.content ?? "";
-        await playTts(line);
+        void playTts(s.messages.at(-1)?.content ?? "");
       }
     } catch (e) {
       if (e instanceof SessionGoneError) {
@@ -314,7 +375,6 @@ export default function App() {
           "Session expired (backend reloaded). Start a new interview.",
         );
       } else setStatusLine(String(e));
-    } finally {
       setBusy(false);
     }
   };
@@ -483,19 +543,19 @@ export default function App() {
           {session.phase !== "done" && session.phase !== "feedback" && (
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || phasePrep}
               onClick={() => void nextPhase()}
             >
-              Next phase
+              {busy ? "Loading…" : phasePrep ? "Preparing…" : "Next phase"}
             </button>
           )}
           {session.phase === "feedback" && (
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || phasePrep}
               onClick={() => void nextPhase()}
             >
-              Finish
+              {busy || phasePrep ? "Loading…" : "Finish"}
             </button>
           )}
           <button

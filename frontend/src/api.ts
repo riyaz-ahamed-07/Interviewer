@@ -123,21 +123,22 @@ export async function getSession(id: string) {
 }
 
 export async function advanceSession(id: string, messages?: ChatMsg[]) {
-  return json<{ session: Session; live_briefing?: string }>(
-    `/api/session/${id}/advance`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        reason: "manual",
-        messages: messages?.map((m) => ({
-          role: m.role,
-          content: m.content,
-          ts: m.ts,
-          phase: m.phase ?? "",
-        })),
-      }),
-    },
-  );
+  return json<{
+    session: Session;
+    live_briefing?: string;
+    preparing?: boolean;
+  }>(`/api/session/${id}/advance`, {
+    method: "POST",
+    body: JSON.stringify({
+      reason: "manual",
+      messages: messages?.map((m) => ({
+        role: m.role,
+        content: m.content,
+        ts: m.ts,
+        phase: m.phase ?? "",
+      })),
+    }),
+  });
 }
 
 export async function logTurn(

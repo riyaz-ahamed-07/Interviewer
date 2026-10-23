@@ -851,13 +851,15 @@ textarea {
 
   .shell.interview .main-grid {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(38vh, 46vh) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 50dvh;
   }
 
   .shell.interview .panel.transcript {
     border-left: none;
     border-top: 2px solid var(--line-soft);
     min-height: 0;
+    height: 50dvh;
+    max-height: 50dvh;
     padding: 0.55rem 0.65rem;
   }
 

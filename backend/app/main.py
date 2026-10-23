@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Literal
 
@@ -144,6 +145,49 @@ async def after_phase_enter(session: InterviewSession) -> None:
     await ensure_scorecard(session)
 
 
+def _phase_needs_async_prep(session: InterviewSession) -> bool:
+    if session.phase == Phase.debug and (
+        not session.code_panel.strip()
+        or session.code_panel.startswith("Generating")
+    ):
+        return True
+    if session.phase == Phase.design and not session.design_prompt:
+        return True
+    if session.phase in (Phase.feedback, Phase.done) and not session.scorecard:
+        return True
+    return False
+
+
+async def _run_phase_prep(session_id: str) -> None:
+    session = store.get(session_id)
+    if not session:
+        return
+    try:
+        await after_phase_enter(session)
+    except Exception:
+        logger.exception("phase prep failed for %s", session_id)
+        session = store.get(session_id)
+        if not session:
+            return
+        if session.phase == Phase.debug and session.code_panel.startswith(
+            "Generating"
+        ):
+            session.code_panel = (
+                "# Could not generate the debug drill.\n"
+                "# Tap Next phase again, or End and start a new run.\n"
+            )
+
+
+async def kick_phase_prep(session: InterviewSession) -> None:
+    """Return control immediately; heavy Groq work continues in the background."""
+    if session.phase == Phase.debug and not session.code_panel.strip():
+        session.code_panel = "Generating debug drill…"
+    if _phase_needs_async_prep(session):
+        asyncio.create_task(_run_phase_prep(session.id))
+        return
+    await after_phase_enter(session)
+
+
 @app.post("/api/session/start")
 async def start_session(body: StartRequest) -> dict[str, Any]:
     session = store.create(
@@ -160,7 +204,7 @@ async def get_session(session_id: str) -> dict[str, Any]:
     if not session:
         raise HTTPException(404, "session not found")
     if store.maybe_auto_advance(session):
-        await after_phase_enter(session)
+        await kick_phase_prep(session)
     return {"session": session.to_public()}
 
 
@@ -192,11 +236,12 @@ async def advance(session_id: str, body: AdvanceRequest | None = None) -> dict[s
     if body and body.messages:
         _apply_client_messages(session, body.messages)
     store.advance_phase(session)
-    await after_phase_enter(session)
+    await kick_phase_prep(session)
     return {
         "session": session.to_public(),
         "reason": (body.reason if body else "manual"),
         "live_briefing": session.live_briefing(),
+        "preparing": _phase_needs_async_prep(session),
     }
 
 
@@ -236,7 +281,7 @@ async def text_turn(session_id: str, body: TextTurnRequest) -> dict[str, Any]:
 
     advanced = store.maybe_auto_advance(session)
     if advanced:
-        await after_phase_enter(session)
+        await kick_phase_prep(session)
     if session.phase == Phase.done:
         return {
             "session": session.to_public(),
