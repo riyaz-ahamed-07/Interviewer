@@ -775,6 +775,65 @@ textarea {
   border-color: var(--orange);
 }
 
+.phase-score-block {
+  margin: 0.55rem 0 0.75rem;
+  padding: 0.45rem 0.55rem;
+  border-left: 3px solid var(--blue);
+  background: #fffdf6;
+}
+
+.phase-score-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.phase-score-num {
+  font-family: var(--title);
+  color: var(--red);
+  font-size: 1.15rem;
+}
+
+.phase-score-note {
+  margin: 0.2rem 0 0.35rem;
+  color: var(--blue);
+}
+
+.phase-sub {
+  margin: 0.35rem 0 0.1rem;
+  font-family: var(--pen);
+  font-size: 1.05rem;
+  color: var(--ink2);
+}
+
+.timer.timer-expired {
+  color: var(--red);
+  animation: timer-pulse 1s ease-in-out infinite;
+}
+
+@keyframes timer-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.friend-hint {
+  padding: 1.2rem 1.3rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.4rem;
+  background:
+    radial-gradient(
+      circle at 12% 18%,
+      rgba(198, 40, 40, 0.08),
+      transparent 42%
+    ),
+    #fff;
+}
+
 .score-manner {
   font-family: var(--pen);
   font-size: 1.15rem;

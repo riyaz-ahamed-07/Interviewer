@@ -14,9 +14,9 @@ You score a completed mock interview from the transcript.
 
 Return ONLY valid JSON (no markdown fences) with this shape:
 {
-  "score": <integer 0-100>,
+  "score": <integer 0-100 overall>,
   "summary": "<2-3 sentences overall>",
-  "strengths": ["<bullet>", "..."],
+  "strengths": ["<overall bullet>", "..."],
   "improve": ["<what to fix next time>", "..."],
   "focus_next": ["<study focus>", "..."],
   "english": {
@@ -26,10 +26,30 @@ Return ONLY valid JSON (no markdown fences) with this shape:
     "notes": ["<specific English habit to change>", "..."]
   },
   "by_phase": {
-    "intro": "<one line>",
-    "debug": "<one line>",
-    "design": "<one line>",
-    "llm": "<one line>"
+    "intro": {
+      "score": <0-100>,
+      "strengths": ["<bullet>"],
+      "weaknesses": ["<bullet>"],
+      "note": "<one line>"
+    },
+    "debug": {
+      "score": <0-100>,
+      "strengths": ["<bullet>"],
+      "weaknesses": ["<bullet>"],
+      "note": "<one line>"
+    },
+    "design": {
+      "score": <0-100>,
+      "strengths": ["<bullet>"],
+      "weaknesses": ["<bullet>"],
+      "note": "<one line>"
+    },
+    "llm": {
+      "score": <0-100>,
+      "strengths": ["<bullet>"],
+      "weaknesses": ["<bullet>"],
+      "note": "<one line>"
+    }
   }
 }
 
@@ -40,8 +60,11 @@ Scoring guide:
 - below 50: major gaps or mostly stuck
 
 Be specific. Quote weak patterns from the transcript when useful.
+Every phase that appears in the transcript MUST have score + strengths + weaknesses.
 English coaching must be practical (fillers, answer structure, starting lines).
 """
+
+PHASE_KEYS = ("intro", "debug", "design", "llm")
 
 
 def _parse_json(raw: str) -> dict[str, Any] | None:
@@ -61,6 +84,34 @@ def _parse_json(raw: str) -> dict[str, Any] | None:
             return data if isinstance(data, dict) else None
         except json.JSONDecodeError:
             return None
+
+
+def _normalize_phase_entry(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, str):
+        return {
+            "score": 0,
+            "strengths": [],
+            "weaknesses": [],
+            "note": raw.strip(),
+        }
+    if not isinstance(raw, dict):
+        return {"score": 0, "strengths": [], "weaknesses": [], "note": ""}
+    try:
+        score = int(raw.get("score", 0))
+    except (TypeError, ValueError):
+        score = 0
+    strengths = raw.get("strengths") or []
+    weaknesses = raw.get("weaknesses") or raw.get("improve") or []
+    if isinstance(strengths, str):
+        strengths = [strengths]
+    if isinstance(weaknesses, str):
+        weaknesses = [weaknesses]
+    return {
+        "score": max(0, min(100, score)),
+        "strengths": [str(x) for x in strengths if str(x).strip()],
+        "weaknesses": [str(x) for x in weaknesses if str(x).strip()],
+        "note": str(raw.get("note") or "").strip(),
+    }
 
 
 def _fallback(reason: str) -> dict[str, Any]:
@@ -112,9 +163,20 @@ def build_copy_text(card: dict[str, Any]) -> str:
     by = card.get("by_phase") or {}
     if by:
         lines.extend(["", "By phase"])
-        for k, v in by.items():
-            if v:
-                lines.append(f"- {k}: {v}")
+        for k in PHASE_KEYS:
+            entry = by.get(k)
+            if not entry:
+                continue
+            if isinstance(entry, str):
+                lines.append(f"- {k}: {entry}")
+                continue
+            lines.append(f"- {k}: {entry.get('score', 0)}/100")
+            if entry.get("note"):
+                lines.append(f"  note: {entry['note']}")
+            for s in entry.get("strengths") or []:
+                lines.append(f"  + {s}")
+            for w in entry.get("weaknesses") or []:
+                lines.append(f"  - {w}")
     return "\n".join(lines).strip() + "\n"
 
 
@@ -138,7 +200,7 @@ async def generate_scorecard(
         f"Mode: {mode}. Run style: {run_style}.\n"
         f"{topics}\n\n"
         f"FULL TRANSCRIPT:\n{transcript}\n\n"
-        "Produce the JSON scorecard now."
+        "Produce the JSON scorecard now. Include per-phase score, strengths, and weaknesses."
     )
 
     raw = await chat_completion(
@@ -168,6 +230,15 @@ async def generate_scorecard(
     data.setdefault("improve", [])
     data.setdefault("focus_next", [])
     data.setdefault("english", {})
-    data.setdefault("by_phase", {})
+    raw_phases = data.get("by_phase") or {}
+    normalized: dict[str, Any] = {}
+    if isinstance(raw_phases, dict):
+        for key in PHASE_KEYS:
+            if key in raw_phases:
+                normalized[key] = _normalize_phase_entry(raw_phases[key])
+        for key, val in raw_phases.items():
+            if key not in normalized:
+                normalized[str(key)] = _normalize_phase_entry(val)
+    data["by_phase"] = normalized
     data["copy_text"] = build_copy_text(data)
     return data

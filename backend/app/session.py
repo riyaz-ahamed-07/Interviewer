@@ -37,6 +37,7 @@ class Phase(str, Enum):
     llm = "llm"
     feedback = "feedback"
     done = "done"
+    friend = "friend"
 
 
 PHASE_ORDER = [
@@ -129,6 +130,7 @@ class InterviewSession:
             Phase.design: s.design_seconds,
             Phase.llm: s.llm_seconds,
             Phase.feedback: 180,
+            Phase.friend: 0,
         }.get(self.phase, 0)
 
     def seconds_remaining(self) -> int:
@@ -221,6 +223,24 @@ class SessionStore:
         self._sessions[session.id] = session
         return session
 
+    def create_friend(self, mode: Mode) -> InterviewSession:
+        session = InterviewSession(
+            id=str(uuid.uuid4()),
+            mode=mode,
+            run_style=RunStyle.practice,
+            debug_difficulty=DebugDifficulty.medium,
+            phase=Phase.friend,
+            phase_started_at=time.time(),
+            code_panel="",
+            drill_title="",
+        )
+        line = opening_line(
+            Phase.friend.value, session.context(), session.run_style.value
+        )
+        session.append("assistant", line)
+        self._sessions[session.id] = session
+        return session
+
     def apply_drill(self, session: InterviewSession, drill: dict[str, Any]) -> None:
         session.drill_title = str(drill.get("title") or "PyTorch debug")
         session.code_panel = str(drill.get("code") or "")
@@ -239,6 +259,8 @@ class SessionStore:
         return self._sessions.get(session_id)
 
     def advance_phase(self, session: InterviewSession) -> InterviewSession:
+        if session.phase == Phase.friend:
+            return session
         idx = PHASE_ORDER.index(session.phase)
         if idx >= len(PHASE_ORDER) - 1:
             session.phase = Phase.done
@@ -280,7 +302,18 @@ class SessionStore:
         return session.llm_topic_briefing()
 
     def maybe_auto_advance(self, session: InterviewSession) -> bool:
-        if session.phase in (Phase.lobby, Phase.done, Phase.feedback):
+        if session.phase in (
+            Phase.lobby,
+            Phase.done,
+            Phase.feedback,
+            Phase.friend,
+        ):
+            return False
+        # Practice intro: timer can hit zero (frontend beeps) but do not auto-skip
+        if (
+            session.phase == Phase.intro
+            and session.run_style == RunStyle.practice
+        ):
             return False
         if session.seconds_remaining() <= 0:
             self.advance_phase(session)

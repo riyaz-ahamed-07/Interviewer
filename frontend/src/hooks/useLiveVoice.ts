@@ -15,7 +15,7 @@ type TurnHandler = (role: "user" | "assistant", text: string) => void;
 
 /**
  * Real-time Gemini Live. Pause stops mic uplink + closes Live WS (saves tokens).
- * Resume reconnects with same session id.
+ * Resume reconnects with same session id (resume=1 so AI does not re-open).
  */
 export function useLiveVoice(onTurnComplete?: TurnHandler) {
   const [status, setStatus] = useState<LiveStatus>("idle");
@@ -32,8 +32,10 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
   const streamRef = useRef<MediaStream | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const micEnabledRef = useRef(true);
+  const allowPlaybackRef = useRef(true);
   const userAccRef = useRef("");
   const asstAccRef = useRef("");
+  const clearPartialsTimer = useRef<number | null>(null);
   const onTurnRef = useRef(onTurnComplete);
   onTurnRef.current = onTurnComplete;
 
@@ -49,35 +51,50 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
     playTimeRef.current = playCtxRef.current?.currentTime ?? 0;
   }, []);
 
-  const playPcm24k = useCallback(async (pcm: ArrayBuffer) => {
-    if (!playCtxRef.current) {
+  const ensurePlayCtx = useCallback(async () => {
+    if (!playCtxRef.current || playCtxRef.current.state === "closed") {
       playCtxRef.current = new AudioContext({ sampleRate: 24000 });
     }
     const ctx = playCtxRef.current;
-    if (ctx.state === "suspended") await ctx.resume();
-    if (!micEnabledRef.current) return;
-
-    setStatus("speaking");
-    const int16 = new Int16Array(pcm);
-    const float32 = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768;
-    const buffer = ctx.createBuffer(1, float32.length, 24000);
-    buffer.copyToChannel(float32, 0);
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    src.connect(ctx.destination);
-    const now = ctx.currentTime;
-    const startAt = Math.max(now, playTimeRef.current);
-    src.start(startAt);
-    playTimeRef.current = startAt + buffer.duration;
-    sourcesRef.current.push(src);
-    src.onended = () => {
-      sourcesRef.current = sourcesRef.current.filter((x) => x !== src);
-      if (sourcesRef.current.length === 0 && micEnabledRef.current) {
-        setStatus("listening");
+    if (ctx.state === "suspended") {
+      try {
+        await ctx.resume();
+      } catch {
+        /* browser may block until next gesture */
       }
-    };
+    }
+    return ctx;
   }, []);
+
+  const playPcm24k = useCallback(
+    async (pcm: ArrayBuffer) => {
+      if (!allowPlaybackRef.current) return;
+      const ctx = await ensurePlayCtx();
+      if (!allowPlaybackRef.current) return;
+
+      setStatus("speaking");
+      const int16 = new Int16Array(pcm);
+      const float32 = new Float32Array(int16.length);
+      for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768;
+      const buffer = ctx.createBuffer(1, float32.length, 24000);
+      buffer.copyToChannel(float32, 0);
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(ctx.destination);
+      const now = ctx.currentTime;
+      const startAt = Math.max(now, playTimeRef.current);
+      src.start(startAt);
+      playTimeRef.current = startAt + buffer.duration;
+      sourcesRef.current.push(src);
+      src.onended = () => {
+        sourcesRef.current = sourcesRef.current.filter((x) => x !== src);
+        if (sourcesRef.current.length === 0 && allowPlaybackRef.current) {
+          setStatus("listening");
+        }
+      };
+    },
+    [ensurePlayCtx],
+  );
 
   const teardownMedia = useCallback(() => {
     stopPlayback();
@@ -87,6 +104,7 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
     void playCtxRef.current?.close();
     captureCtxRef.current = null;
     playCtxRef.current = null;
+    playTimeRef.current = 0;
   }, [stopPlayback]);
 
   const disconnect = useCallback(() => {
@@ -99,14 +117,19 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
     wsRef.current = null;
     teardownMedia();
     micEnabledRef.current = true;
+    allowPlaybackRef.current = true;
     setPaused(false);
     setStatus("idle");
     setUserPartial("");
     setAssistantPartial("");
+    if (clearPartialsTimer.current) {
+      window.clearTimeout(clearPartialsTimer.current);
+      clearPartialsTimer.current = null;
+    }
   }, [teardownMedia]);
 
   const connect = useCallback(
-    async (sessionId: string) => {
+    async (sessionId: string, opts?: { resume?: boolean }) => {
       if (!sessionId) {
         setError("missing session id");
         setStatus("error");
@@ -114,9 +137,9 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
       }
       sessionIdRef.current = sessionId;
       micEnabledRef.current = true;
+      allowPlaybackRef.current = true;
       setPaused(false);
 
-      // close previous without clearing sessionId
       try {
         wsRef.current?.send(JSON.stringify({ type: "end" }));
       } catch {
@@ -132,6 +155,10 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
       setAssistantPartial("");
       userAccRef.current = "";
       asstAccRef.current = "";
+      if (clearPartialsTimer.current) {
+        window.clearTimeout(clearPartialsTimer.current);
+        clearPartialsTimer.current = null;
+      }
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -146,7 +173,11 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
       const captureCtx = new AudioContext({ sampleRate: 16000 });
       captureCtxRef.current = captureCtx;
       if (captureCtx.state === "suspended") await captureCtx.resume();
-      playCtxRef.current = new AudioContext({ sampleRate: 24000 });
+
+      // Unlock playback AudioContext while we still have the user gesture
+      // (resume / Start click). Otherwise post-pause AI audio is silent.
+      await ensurePlayCtx();
+      playTimeRef.current = playCtxRef.current?.currentTime ?? 0;
 
       const source = captureCtx.createMediaStreamSource(stream);
       const processor = captureCtx.createScriptProcessor(4096, 1, 1);
@@ -156,7 +187,9 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
       processor.connect(mute);
       mute.connect(captureCtx.destination);
 
-      const ws = new WebSocket(wsLiveUrl(sessionId));
+      const ws = new WebSocket(
+        wsLiveUrl(sessionId, { resume: Boolean(opts?.resume) }),
+      );
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
@@ -175,6 +208,20 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
         };
       });
 
+      const appendChunk = (acc: { current: string }, chunk: string) => {
+        const t = chunk;
+        if (!t) return acc.current;
+        // Prefer cumulative snapshot if model sends growing full text
+        if (!acc.current || t.startsWith(acc.current)) {
+          acc.current = t;
+        } else if (acc.current.startsWith(t)) {
+          /* older shorter snapshot — ignore */
+        } else {
+          acc.current += t;
+        }
+        return acc.current;
+      };
+
       ws.onmessage = (ev) => {
         if (ev.data instanceof ArrayBuffer) {
           void playPcm24k(ev.data);
@@ -184,15 +231,18 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
           const msg = JSON.parse(ev.data as string);
           if (msg.type === "interrupted") {
             stopPlayback();
-            if (micEnabledRef.current) setStatus("listening");
+            if (allowPlaybackRef.current) setStatus("listening");
           }
-          if (msg.type === "user_transcript" && msg.text) {
-            userAccRef.current += msg.text;
+          if (msg.type === "user_transcript_interim" && msg.text) {
+            // Live while speaking — replace with latest interim snapshot
+            userAccRef.current = String(msg.text);
             setUserPartial(userAccRef.current);
           }
+          if (msg.type === "user_transcript" && msg.text) {
+            setUserPartial(appendChunk(userAccRef, String(msg.text)));
+          }
           if (msg.type === "assistant_transcript" && msg.text) {
-            asstAccRef.current += msg.text;
-            setAssistantPartial(asstAccRef.current);
+            setAssistantPartial(appendChunk(asstAccRef, String(msg.text)));
           }
           if (msg.type === "turn_complete") {
             if (userAccRef.current.trim()) {
@@ -201,14 +251,21 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
             if (asstAccRef.current.trim()) {
               onTurnRef.current?.("assistant", asstAccRef.current.trim());
             }
-            userAccRef.current = "";
-            asstAccRef.current = "";
-            setUserPartial("");
-            setAssistantPartial("");
-            if (micEnabledRef.current) setStatus("listening");
+            // Keep live strip visible briefly so it does not flash empty
+            if (clearPartialsTimer.current) {
+              window.clearTimeout(clearPartialsTimer.current);
+            }
+            clearPartialsTimer.current = window.setTimeout(() => {
+              userAccRef.current = "";
+              asstAccRef.current = "";
+              setUserPartial("");
+              setAssistantPartial("");
+              clearPartialsTimer.current = null;
+            }, 600);
+            if (allowPlaybackRef.current) setStatus("listening");
           }
           if (msg.type === "live_connected" || msg.type === "ready") {
-            if (micEnabledRef.current) setStatus("listening");
+            if (allowPlaybackRef.current) setStatus("listening");
           }
           if (msg.type === "error") {
             setError(msg.error ?? "live error");
@@ -241,11 +298,12 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
 
       setStatus("listening");
     },
-    [playPcm24k, stopPlayback, teardownMedia],
+    [ensurePlayCtx, playPcm24k, stopPlayback, teardownMedia],
   );
 
   const pause = useCallback(() => {
     micEnabledRef.current = false;
+    allowPlaybackRef.current = false;
     setPaused(true);
     stopPlayback();
     try {
@@ -259,6 +317,10 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
     streamRef.current = null;
     void captureCtxRef.current?.close();
     captureCtxRef.current = null;
+    // Close playback ctx too — a fresh one is unlocked on resume click
+    void playCtxRef.current?.close();
+    playCtxRef.current = null;
+    playTimeRef.current = 0;
     setStatus("paused");
     setUserPartial("");
     setAssistantPartial("");
@@ -268,17 +330,19 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
     const id = sessionIdRef.current;
     if (!id) return;
     setPaused(false);
-    await connect(id);
-    // nudge interviewer after reconnect
+    allowPlaybackRef.current = true;
+    await connect(id, { resume: true });
+    // Nudge after reconnect — AudioContext already resumed in connect()
     window.setTimeout(() => {
+      void ensurePlayCtx();
       wsRef.current?.send(
         JSON.stringify({
           type: "text",
-          text: "Candidate resumed the live call. Continue the interview briefly from where you left off. Do not restart the whole intro.",
+          text: "Candidate resumed the live call. Continue briefly from where you left off. Do not restart the whole intro or re-ask old openings.",
         }),
       );
-    }, 800);
-  }, [connect]);
+    }, 600);
+  }, [connect, ensurePlayCtx]);
 
   const sendText = useCallback((text: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {

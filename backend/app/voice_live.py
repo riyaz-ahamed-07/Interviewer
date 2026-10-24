@@ -43,6 +43,8 @@ async def _run_live_session(
     model: str,
     system_text: str,
     opening: str,
+    *,
+    resume: bool = False,
 ) -> None:
     client = genai.Client(api_key=api_key)
     audio_in: asyncio.Queue[bytes] = asyncio.Queue(maxsize=128)
@@ -109,14 +111,23 @@ async def _run_live_session(
 
     async with client.aio.live.connect(model=model, config=config) as live:
         await websocket.send_json({"type": "live_connected", "model": model})
-        await live.send_realtime_input(
-            text=(
-                "You are in a LIVE voice interview. Speak naturally like a human interviewer — "
-                "short sentences, conversational, not reading an essay. "
-                "Begin now by saying this opening out loud (paraphrase slightly if natural):\n"
-                f"{opening}"
+        if resume:
+            await live.send_realtime_input(
+                text=(
+                    "[System] Candidate just resumed the live call after a pause. "
+                    "Stay silent for a moment. Do NOT re-read old openings or restart the phase. "
+                    "Wait for their voice or a short continue cue, then pick up briefly where you left off."
+                )
             )
-        )
+        else:
+            await live.send_realtime_input(
+                text=(
+                    "You are in a LIVE voice conversation. Speak naturally — "
+                    "short sentences, conversational, not reading an essay. "
+                    "Begin now by saying this opening out loud (paraphrase slightly if natural):\n"
+                    f"{opening}"
+                )
+            )
 
         async def send_audio() -> None:
             while not stop.is_set():
@@ -160,13 +171,22 @@ async def _run_live_session(
                         for part in sc.model_turn.parts or []:
                             if part.inline_data and part.inline_data.data:
                                 await websocket.send_bytes(part.inline_data.data)
-                    if sc.input_transcription and sc.input_transcription.text:
+                    interim = getattr(sc, "interim_input_transcription", None)
+                    if interim is not None and getattr(interim, "text", None):
                         await websocket.send_json(
                             {
-                                "type": "user_transcript",
-                                "text": sc.input_transcription.text,
+                                "type": "user_transcript_interim",
+                                "text": interim.text,
                             }
                         )
+                    if sc.input_transcription and sc.input_transcription.text:
+                        payload: dict[str, Any] = {
+                            "type": "user_transcript",
+                            "text": sc.input_transcription.text,
+                        }
+                        if getattr(sc.input_transcription, "finished", None):
+                            payload["finished"] = True
+                        await websocket.send_json(payload)
                     if sc.output_transcription and sc.output_transcription.text:
                         await websocket.send_json(
                             {
@@ -207,6 +227,12 @@ async def handle_live_socket(websocket: WebSocket, session_id: str) -> None:
         await websocket.close()
         return
 
+    resume = (websocket.query_params.get("resume") or "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
     settings = get_settings()
     api_key = next_gemini_key()
     if not api_key:
@@ -239,6 +265,7 @@ async def handle_live_socket(websocket: WebSocket, session_id: str) -> None:
             "type": "ready",
             "models": tried,
             "phase": interview.phase.value,
+            "resume": resume,
         }
     )
 
@@ -250,7 +277,13 @@ async def handle_live_socket(websocket: WebSocket, session_id: str) -> None:
                     {"type": "retrying", "fallback_model": model}
                 )
             await _run_live_session(
-                websocket, session_id, api_key, model, system_text, opening
+                websocket,
+                session_id,
+                api_key,
+                model,
+                system_text,
+                opening,
+                resume=resume,
             )
             return
         except Exception as e:

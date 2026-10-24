@@ -1,18 +1,41 @@
 import { useState } from "react";
-import type { Scorecard } from "../api";
+import type { PhaseScore, Scorecard } from "../api";
 
 type Props = {
   card: Scorecard;
 };
 
+const PHASE_LABELS: Record<string, string> = {
+  intro: "Intro",
+  debug: "Debug",
+  design: "Design",
+  llm: "LLM techniques",
+};
+
+function asPhaseScore(raw: PhaseScore | string | undefined): PhaseScore | null {
+  if (!raw) return null;
+  if (typeof raw === "string") {
+    return { score: 0, strengths: [], weaknesses: [], note: raw };
+  }
+  return {
+    score: Number(raw.score) || 0,
+    strengths: raw.strengths || [],
+    weaknesses: raw.weaknesses || [],
+    note: raw.note,
+  };
+}
+
 export function ScorecardPanel({ card }: Props) {
   const [copied, setCopied] = useState(false);
   const eng = card.english ?? {};
+  const byPhase = card.by_phase ?? {};
+  const phaseKeys = ["intro", "debug", "design", "llm"].filter(
+    (k) => byPhase[k],
+  );
 
   const copyAll = async () => {
     const text =
-      card.copy_text?.trim() ||
-      `Score: ${card.score}/100\n\n${card.summary}\n`;
+      card.copy_text?.trim() || `Score: ${card.score}/100\n\n${card.summary}\n`;
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -32,12 +55,55 @@ export function ScorecardPanel({ card }: Props) {
             <span>/100</span>
           </h2>
         </div>
-        <button type="button" className="copy-btn" onClick={() => void copyAll()}>
+        <button
+          type="button"
+          className="copy-btn"
+          onClick={() => void copyAll()}
+        >
           {copied ? "Copied ✓" : "Copy all feedback"}
         </button>
       </div>
 
       <p className="score-summary">{card.summary}</p>
+
+      {phaseKeys.length > 0 ? (
+        <section className="score-sec score-phases">
+          <h3>By phase</h3>
+          {phaseKeys.map((key) => {
+            const p = asPhaseScore(byPhase[key]);
+            if (!p) return null;
+            return (
+              <div key={key} className="phase-score-block">
+                <div className="phase-score-head">
+                  <strong>{PHASE_LABELS[key] ?? key}</strong>
+                  <span className="phase-score-num">{p.score}/100</span>
+                </div>
+                {p.note ? <p className="phase-score-note">{p.note}</p> : null}
+                {p.strengths.length > 0 ? (
+                  <>
+                    <p className="phase-sub">Strengths</p>
+                    <ul>
+                      {p.strengths.map((x) => (
+                        <li key={`${key}-s-${x}`}>{x}</li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+                {p.weaknesses.length > 0 ? (
+                  <>
+                    <p className="phase-sub">Weaknesses</p>
+                    <ul>
+                      {p.weaknesses.map((x) => (
+                        <li key={`${key}-w-${x}`}>{x}</li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+              </div>
+            );
+          })}
+        </section>
+      ) : null}
 
       <section className="score-sec">
         <h3>Strengths</h3>

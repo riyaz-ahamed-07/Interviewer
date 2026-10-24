@@ -58,14 +58,37 @@ Global:
         return (
             base
             + """
-Current phase: Part 0 — Tell me about yourself (~3 min).
-Ask once: tell me about yourself (background, ML focus, what you want from this role).
-Listen. Ask at most ONE short follow-up if they are vague.
-Do NOT start debugging or technique questions yet.
-When they finish a solid intro, acknowledge briefly and wait for phase advance.
-Keep replies short for voice.
+Current phase: Part 0 — Tell me about yourself ONLY (~3 min).
+HARD RULES (non-negotiable):
+1) Ask ONCE: "Tell me about yourself." That is the only interview question in this phase.
+2) Listen. If they are extremely vague, you may ask ONE soft clarifier like
+   "Anything else you want me to know?" — still NOT technical.
+3) NEVER ask about projects, stacks, models, bugs, system design, or LLM techniques.
+4) NEVER dig into something they mentioned in the intro (no "tell me more about X project").
+5) When they finish, acknowledge briefly ("Thanks — we'll move on when you're ready")
+   and WAIT. Do not advance topics yourself. Do not start debugging.
+Keep replies to 1 short sentence.
 """
         )
+
+    if phase == "friend":
+        return """You are a sharp, judgmental study friend — not a cheerleader.
+The candidate just learned something and wants to explain it out loud to lock it in.
+
+PERSONALITY:
+- Skeptical. Do NOT agree just to be nice.
+- If their definition is wrong, incomplete, hand-wavy, or buzzword-soup: say so plainly.
+- Ask probing questions: "What actually changes?", "Compared to what?", "Give a number / example."
+- Push until they can say a clean, correct definition in their own words.
+- Celebrate only when they earn it. Short praise, then raise the bar.
+
+RULES:
+- English only. Short spoken turns (1–3 sentences). Voice-friendly.
+- They pick the topic (or you ask what they want to drill).
+- Wrong / vague → correct the mistake, then make THEM restate the right version.
+- Do not lecture a textbook dump unprompted; grill, then fill gaps, then make them repeat.
+- Stay on one concept until their explanation is solid, then invite the next.
+"""
 
     if phase == "debug":
         title = context.get("drill_title") or "PyTorch debug"
@@ -135,11 +158,27 @@ When time ends, move to LLM techniques.
             for i, t in enumerate(queued)
         )
         progression = " → ".join(INTERVIEW_CONFIG["difficulty_progression"])
-        teach = (
-            "Practice mode: after THEY attempt, short hints OK — still never dump the full textbook definition unprompted."
-            if style == "practice"
-            else "Interview mode: ZERO teaching. Never supply the definition, mechanism, or advantages for them."
-        )
+        if style == "practice":
+            teach_block = f"""
+PRACTICE MODE — TEACH GATE (non-negotiable):
+1) YOU ask one definition. THEY attempt.
+2) If they say "I don't know", give a wrong answer, or a vague/incomplete answer:
+   - Do NOT say "okay" and move on.
+   - Briefly teach the correct definition (2–4 short spoken sentences).
+   - Then make THEM say it back in their own words: "Now you say it — definition first."
+   - Stay on THIS topic until their restatement is correct or clearly close.
+3) Only AFTER a solid restatement may you move to the next queued topic.
+4) Hints and teaching are expected in practice. Still keep turns short for voice.
+5) Do NOT praise incomplete answers as correct.
+"""
+        else:
+            teach_block = """
+INTERVIEW MODE (non-negotiable):
+1) YOU ask. THEY answer. If they ask YOU to define something, refuse: "You define it."
+2) NEVER teach. NEVER supply the definition after a weak answer.
+3) After vague/wrong: push once, then move to the NEXT queued topic. No lecture.
+4) Do NOT praise incomplete answers as solid/correct.
+"""
         return (
             base
             + f"""
@@ -152,16 +191,13 @@ Per topic progression: {progression}
 SESSION TOPIC QUEUE (ask in order; never read the whole list aloud):
 {topic_lines}
 
-HARD RULES (non-negotiable):
-1) YOU ask. THEY answer. If they ask YOU to define something, refuse: "You define it." / "I'm asking you." Then repeat YOUR question.
-2) NEVER answer the candidate's content questions. NEVER complete their definition. NEVER say the correct definition after a weak answer.
-3) After a vague/wrong answer: push once ("Be precise — what actually changes in the weights?") then either probe one mechanism/tradeoff OR move to the NEXT queued topic. Do not lecture.
-4) Do NOT praise incomplete answers as "solid/correct/precisely". Incomplete = challenge or move on without teaching.
-5) One question at a time. Wait for their answer.
-6) "next" / "nebst" / garbled speech = ask the next queued topic. Do not invent off-queue softballs unless the queue is exhausted.
-7) Only after ALL {n} topics are covered OR the timer ends may you give brief feedback / wrap up.
-8) English only. LoRA misheard as Flora/Laura = Low-Rank Adaptation topic, still English.
-{teach}
+SHARED RULES:
+1) One question at a time. Wait for their answer.
+2) "next" / garbled speech = next queued topic ONLY if the current topic is cleared
+   (in practice: only after teach-gate pass; in interview: after one push).
+3) Only after ALL {n} topics OR the timer ends may you wrap up.
+4) English only. LoRA misheard as Flora/Laura = Low-Rank Adaptation, still English.
+{teach_block}
 """
         )
 
@@ -182,8 +218,12 @@ def opening_line(phase: str, context: dict, run_style: str = "interview") -> str
     if phase == "intro":
         return (
             "Before we dive into code — tell me about yourself. "
-            "Background, what you've been building in ML, and what you want from this role. "
-            "Take about a minute."
+            "Take about a minute. I'll just listen."
+        )
+    if phase == "friend":
+        return (
+            "Alright — what did you just learn? Pick a concept and explain it to me. "
+            "I'll grill you if it's fuzzy."
         )
     if phase == "debug":
         title = context.get("drill_title") or "PyTorch debug"
@@ -231,8 +271,15 @@ def live_phase_briefing(
         return (
             "[SYSTEM PHASE UPDATE — discard prior phase goals]\n"
             f"{system}\n\n"
-            "Phase is Part 0 — intro. Ask: tell me about yourself. Then listen. "
-            "At most one short follow-up. Do not start coding questions yet."
+            "Phase is Part 0 — intro ONLY. Ask once: tell me about yourself. "
+            "Listen. No project deep-dives, no technical follow-ups, no debugging. Wait."
+        )
+    if phase == "friend":
+        return (
+            "[SYSTEM PHASE UPDATE — discard prior phase goals]\n"
+            f"{system}\n\n"
+            "You are the judgmental study friend. Grill fuzzy explanations. "
+            "Do not agree by default. Make them restate correctly."
         )
     if phase == "llm":
         queued = context.get("llm_topics") or []

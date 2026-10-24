@@ -45,6 +45,10 @@ class StartRequest(BaseModel):
     debug_difficulty: Literal["easy", "medium", "hard"] = "medium"
 
 
+class FriendStartRequest(BaseModel):
+    mode: Literal["soft", "medium", "strict", "hardcore"] = "medium"
+
+
 class TextTurnRequest(BaseModel):
     text: str = Field(min_length=1)
     diagram_labels: list[str] = Field(default_factory=list)
@@ -195,6 +199,12 @@ async def start_session(body: StartRequest) -> dict[str, Any]:
         run_style=RunStyle(body.run_style),
         debug_difficulty=DebugDifficulty(body.debug_difficulty),
     )
+    return {"session": session.to_public()}
+
+
+@app.post("/api/session/friend/start")
+async def start_friend_session(body: FriendStartRequest) -> dict[str, Any]:
+    session = store.create_friend(mode=Mode(body.mode))
     return {"session": session.to_public()}
 
 

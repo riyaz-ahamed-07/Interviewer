@@ -7,6 +7,7 @@ import {
   navigateLlmTopic,
   SessionGoneError,
   speakFallback,
+  startFriendSession,
   startSession,
   submitDiagram,
   textTurn,
@@ -29,6 +30,36 @@ const TONES: { id: Mode; label: string; blurb: string }[] = [
   { id: "hardcore", label: "Hardcore", blurb: "Skeptical" },
 ];
 
+function playTimerBeep() {
+  try {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext })
+        .webkitAudioContext;
+    const ctx = new Ctx();
+    const beep = (at: number, freq: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      osc.frequency.value = freq;
+      gain.gain.value = 0.0001;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const t0 = ctx.currentTime + at;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+      osc.start(t0);
+      osc.stop(t0 + 0.25);
+    };
+    beep(0, 880);
+    beep(0.28, 660);
+    window.setTimeout(() => void ctx.close(), 800);
+  } catch {
+    /* silent */
+  }
+}
+
 export default function App() {
   const [mode, setMode] = useState<Mode>("medium");
   const [runStyle, setRunStyle] = useState<RunStyle>("interview");
@@ -40,10 +71,12 @@ export default function App() {
   const [wantLive, setWantLive] = useState(true);
   const [busy, setBusy] = useState(false);
   const [phasePrep, setPhasePrep] = useState(false);
+  const [localSecs, setLocalSecs] = useState(0);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   const sessionIdRef = useRef<string | null>(null);
   const phaseRef = useRef<string>("lobby");
+  const introBeepedRef = useRef(false);
 
   const onTurn = useCallback((role: "user" | "assistant", text: string) => {
     const trimmed = text.trim();
@@ -95,6 +128,43 @@ export default function App() {
       })
       .catch(() => setStatusLine("Backend offline — start uvicorn on :8000"));
   }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    setLocalSecs(session.seconds_remaining);
+    introBeepedRef.current = false;
+  }, [session?.id, session?.phase]);
+
+  useEffect(() => {
+    if (!session) return;
+    setLocalSecs((s) => Math.min(s, session.seconds_remaining));
+  }, [session?.seconds_remaining]);
+
+  useEffect(() => {
+    if (!session) return;
+    if (session.phase === "friend" || session.phase_budget_seconds <= 0) return;
+    const t = window.setInterval(() => {
+      setLocalSecs((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [session?.id, session?.phase, session?.phase_budget_seconds]);
+
+  useEffect(() => {
+    if (!session) return;
+    if (
+      session.phase === "intro" &&
+      session.run_style === "practice" &&
+      localSecs <= 0 &&
+      session.phase_budget_seconds > 0 &&
+      !introBeepedRef.current
+    ) {
+      introBeepedRef.current = true;
+      playTimerBeep();
+      setStatusLine(
+        "Intro time is up — beep. Tap Next phase when ready (not auto-advancing).",
+      );
+    }
+  }, [localSecs, session]);
 
   useEffect(() => {
     if (!session) return;
@@ -193,7 +263,7 @@ export default function App() {
 
   const start = async () => {
     setBusy(true);
-    setStatusLine("Generating a unique debug snippet…");
+    setStatusLine("Starting interview…");
     try {
       const { session: s } = await startSession(
         mode,
@@ -204,6 +274,29 @@ export default function App() {
       setStatusLine(
         `${s.run_style} · ${s.debug_difficulty} · starts with intro`,
       );
+      if (wantLive) {
+        try {
+          await live.connect(s.id);
+        } catch (e) {
+          setWantLive(false);
+          setStatusLine(`Live failed (${String(e)}). Text + TTS fallback.`);
+          await playTts(s.messages.at(-1)?.content ?? "");
+        }
+      } else {
+        await playTts(s.messages.at(-1)?.content ?? "");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startFriend = async () => {
+    setBusy(true);
+    setStatusLine("Calling your study friend…");
+    try {
+      const { session: s } = await startFriendSession(mode);
+      setSession(s);
+      setStatusLine("Study friend · explain a concept · expect pushback");
       if (wantLive) {
         try {
           await live.connect(s.id);
@@ -382,6 +475,10 @@ export default function App() {
   const mmss = (s: number) =>
     `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
+  const isFriend = session?.phase === "friend";
+  const timerExpired =
+    Boolean(session) && session!.phase_budget_seconds > 0 && localSecs <= 0;
+
   const liveLabel =
     live.status === "paused"
       ? "Paused (tokens saved)"
@@ -405,7 +502,8 @@ export default function App() {
           </h1>
           <p className="lede">
             Each run builds a new chained debug. Practice gives hints. Interview
-            does not.
+            does not. Or call a judgmental study friend to grill your
+            explanations.
           </p>
           <p className="status">{statusLine}</p>
           <p className="lede">
@@ -417,6 +515,20 @@ export default function App() {
             </a>
           </p>
         </header>
+
+        <button
+          type="button"
+          className="cta"
+          disabled={busy}
+          onClick={() => void startFriend()}
+          style={{ marginBottom: "0.75rem" }}
+        >
+          {busy ? "Connecting…" : "Talk to a study friend"}
+        </button>
+        <p className="lede" style={{ marginTop: 0 }}>
+          Freely explain concepts after you learn them. He will argue, quiz, and
+          correct you — not nod along.
+        </p>
 
         <p className="section-label">Run style</p>
         <section className="modes two">
@@ -493,7 +605,7 @@ export default function App() {
           disabled={busy}
           onClick={() => void start()}
         >
-          {busy ? "Generating debug code…" : "Start"}
+          {busy ? "Starting…" : "Start interview"}
         </button>
       </div>
     );
@@ -504,9 +616,17 @@ export default function App() {
       <header className="topbar">
         <div className="topbar-left">
           <strong>{session.phase.toUpperCase()}</strong>
-          <span className="pill">{session.run_style}</span>
-          <span className="pill">{session.debug_difficulty}</span>
-          <span className="timer">{mmss(session.seconds_remaining)}</span>
+          {!isFriend ? (
+            <>
+              <span className="pill">{session.run_style}</span>
+              <span className="pill">{session.debug_difficulty}</span>
+              <span className={timerExpired ? "timer timer-expired" : "timer"}>
+                {mmss(localSecs)}
+              </span>
+            </>
+          ) : (
+            <span className="pill">study friend</span>
+          )}
         </div>
         <div className="top-actions">
           {wantLive && (
@@ -518,7 +638,7 @@ export default function App() {
               {live.paused ? "Resume voice" : "Pause voice"}
             </button>
           )}
-          {session.phase === "llm" && (
+          {!isFriend && session.phase === "llm" && (
             <>
               <button
                 type="button"
@@ -540,16 +660,18 @@ export default function App() {
               </button>
             </>
           )}
-          {session.phase !== "done" && session.phase !== "feedback" && (
-            <button
-              type="button"
-              disabled={busy || phasePrep}
-              onClick={() => void nextPhase()}
-            >
-              {busy ? "Loading…" : phasePrep ? "Preparing…" : "Next phase"}
-            </button>
-          )}
-          {session.phase === "feedback" && (
+          {!isFriend &&
+            session.phase !== "done" &&
+            session.phase !== "feedback" && (
+              <button
+                type="button"
+                disabled={busy || phasePrep}
+                onClick={() => void nextPhase()}
+              >
+                {busy ? "Loading…" : phasePrep ? "Preparing…" : "Next phase"}
+              </button>
+            )}
+          {!isFriend && session.phase === "feedback" && (
             <button
               type="button"
               disabled={busy || phasePrep}
@@ -581,13 +703,24 @@ export default function App() {
 
       <div className="main-grid">
         <section className="panel work">
+          {session.phase === "friend" && (
+            <div className="friend-hint">
+              <p className="llm-kicker">Study friend</p>
+              <h2 className="llm-cue">Explain it. Get grilled.</h2>
+              <p className="llm-coach">
+                Pick any concept you just learned. He will not nod along — wrong
+                or fuzzy answers get called out, then you restate them properly.
+              </p>
+            </div>
+          )}
+
           {session.phase === "intro" && (
             <div className="llm-hint">
               <p className="llm-kicker">Part 0</p>
               <h2 className="llm-cue">Tell me about yourself</h2>
               <p className="llm-coach">
-                Background, ML focus, and what you want from this role. About
-                one minute.
+                A normal RAP intro only — no project deep-dives. When the timer
+                beeps in practice, stay here until you tap Next phase.
               </p>
             </div>
           )}

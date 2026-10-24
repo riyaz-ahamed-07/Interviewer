@@ -12,13 +12,21 @@ export type Phase =
   | "design"
   | "llm"
   | "feedback"
-  | "done";
+  | "done"
+  | "friend";
 
 export type ChatMsg = {
   role: string;
   content: string;
   ts: number;
   phase?: string;
+};
+
+export type PhaseScore = {
+  score: number;
+  strengths: string[];
+  weaknesses: string[];
+  note?: string;
 };
 
 export type Scorecard = {
@@ -33,7 +41,7 @@ export type Scorecard = {
     answer_openers?: string[];
     notes?: string[];
   };
-  by_phase?: Record<string, string>;
+  by_phase?: Record<string, PhaseScore | string>;
   copy_text: string;
 };
 
@@ -90,9 +98,13 @@ export function apiBase() {
   return API_BASE;
 }
 
-export function wsLiveUrl(sessionId: string) {
+export function wsLiveUrl(
+  sessionId: string,
+  opts?: { resume?: boolean },
+) {
   const base = API_BASE.replace(/^http/, "ws");
-  return `${base}/ws/live/${sessionId}`;
+  const q = opts?.resume ? "?resume=1" : "";
+  return `${base}/ws/live/${sessionId}${q}`;
 }
 
 export async function health() {
@@ -115,6 +127,13 @@ export async function startSession(
       run_style: runStyle,
       debug_difficulty: debugDifficulty,
     }),
+  });
+}
+
+export async function startFriendSession(mode: Mode = "medium") {
+  return json<{ session: Session }>("/api/session/friend/start", {
+    method: "POST",
+    body: JSON.stringify({ mode }),
   });
 }
 
