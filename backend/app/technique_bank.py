@@ -613,6 +613,50 @@ MASTER_TECHNIQUE_BANK: dict[str, list[str]] = {
 }
 
 
+# First 6 always asked (patterned on real RAP screens — wording can vary slightly
+# via interviewer, but topics stay fixed).
+RAP_CORE_LLM_TOPICS: list[dict[str, str]] = [
+    {
+        "category": "embeddings_and_representation",
+        "technique": "Embedding techniques (what embeddings are / how they are used)",
+    },
+    {
+        "category": "inference_optimization",
+        "technique": "Latency vs throughput",
+    },
+    {
+        "category": "prompting_and_context",
+        "technique": "System prompt",
+    },
+    {
+        "category": "quantization_and_numerical_precision",
+        "technique": "LLM quantization",
+    },
+    {
+        "category": "decoding_and_generation",
+        "technique": "LLM inference hyperparameters (temperature, top-k, top-p — what changes if you change them)",
+    },
+    {
+        "category": "training_fundamentals",
+        "technique": "Training vs inference (what differs)",
+    },
+]
+
+# Categories for the remaining random 6 — same "part of the stack" as RAP asked.
+RAP_RELATED_CATEGORIES: list[str] = [
+    "embeddings_and_representation",
+    "inference_optimization",
+    "inference_frameworks_and_engines",
+    "quantization_and_numerical_precision",
+    "prompting_and_context",
+    "decoding_and_generation",
+    "training_fundamentals",
+    "fine_tuning_and_peft",
+    "rag_and_information_retrieval",
+    "transformer_and_llm_fundamentals",
+]
+
+
 INTERVIEW_CONFIG: dict[str, Any] = {
     "round": "llm_and_ml_engineering_fundamentals",
     "question_style": "definition_then_mechanism_then_tradeoffs",
@@ -624,19 +668,22 @@ INTERVIEW_CONFIG: dict[str, Any] = {
         "applied_scenario",
     ],
     "priority_categories": [
-        "fine_tuning_and_peft",
-        "alignment_and_preference_optimization",
-        "quantization_and_numerical_precision",
+        "embeddings_and_representation",
         "inference_optimization",
+        "prompting_and_context",
+        "quantization_and_numerical_precision",
+        "decoding_and_generation",
+        "training_fundamentals",
+        "fine_tuning_and_peft",
         "inference_frameworks_and_engines",
         "rag_and_information_retrieval",
+        "transformer_and_llm_fundamentals",
+        "deep_learning_and_pytorch",
+        "alignment_and_preference_optimization",
         "agent_architecture_and_harness",
         "llm_evaluation_and_testing",
         "ml_system_design",
-        "deep_learning_and_pytorch",
-        "mlops_and_training_infrastructure",
         "backend_api_and_serving",
-        "docker_and_deployment",
     ],
     # Relative category multipliers (applied on top of per-technique weights).
     "category_weights": {
@@ -807,27 +854,52 @@ def sample_session_topics(
     *,
     rng: random.Random | None = None,
 ) -> list[dict[str, str]]:
-    """Weighted sample without replacement. Popular techniques dominate."""
+    """First 6 = RAP core (fixed). Rest = weighted sample from related cats."""
     count = int(n or INTERVIEW_CONFIG["questions_per_session"])
     rng = rng or random.Random()
 
+    core = [dict(t) for t in RAP_CORE_LLM_TOPICS]
+    if count <= len(core):
+        return core[:count]
+
+    used = {(t["category"], t["technique"].lower()) for t in core}
+    # Also block near-duplicates by technique keyword overlap with core titles
+    core_needles = [
+        "embedding",
+        "latency",
+        "throughput",
+        "system prompt",
+        "quantization",
+        "temperature",
+        "top-k",
+        "top-p",
+        "training vs inference",
+        "hyperparameter",
+    ]
+
     pool: list[tuple[str, str, float]] = []
-    for cat, techniques in MASTER_TECHNIQUE_BANK.items():
-        # Prefer priority categories; still allow a thin long-tail from others.
-        in_priority = cat in INTERVIEW_CONFIG["priority_categories"]
+    for cat in RAP_RELATED_CATEGORIES:
+        techniques = MASTER_TECHNIQUE_BANK.get(cat, [])
         for tech in techniques:
+            key = (cat, tech.lower())
+            if key in used:
+                continue
+            low = tech.lower()
+            if any(n in low for n in core_needles):
+                # skip near-copies of the hardcoded six
+                continue
             w = _technique_weight(cat, tech)
-            if not in_priority:
-                w *= 0.25
             pool.append((cat, tech, w))
 
-    selected: list[dict[str, str]] = []
+    selected = list(core)
     remaining = list(pool)
-    for _ in range(min(count, len(remaining))):
+    need = count - len(selected)
+    for _ in range(min(need, len(remaining))):
         weights = [w for _, _, w in remaining]
         pick = rng.choices(range(len(remaining)), weights=weights, k=1)[0]
         cat, tech, _ = remaining.pop(pick)
         selected.append({"category": cat, "technique": tech})
+        used.add((cat, tech.lower()))
     return selected
 
 

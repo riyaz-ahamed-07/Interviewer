@@ -13,6 +13,7 @@ from .config import get_settings
 from .debug_gen import generate_debug_drill
 from .design_gen import generate_design_prompt
 from .llm_router import chat_completion, encode_png_bytes, get_router
+from .prompts import opening_line
 from .scorecard import generate_scorecard
 from .session import (
     DebugDifficulty,
@@ -110,9 +111,11 @@ def health() -> dict[str, Any]:
 
 
 async def ensure_design_prompt(session: InterviewSession) -> None:
-    if session.phase != Phase.design or session.design_prompt:
+    if session.phase not in (Phase.design, Phase.design_teacher):
         return
-    design = await generate_design_prompt(session.debug_difficulty.value)
+    if session.design_prompt:
+        return
+    design = await generate_design_prompt("rap")
     store.apply_design(session, design)
     store.append_design_opening(session)
 
@@ -155,7 +158,7 @@ def _phase_needs_async_prep(session: InterviewSession) -> bool:
         or session.code_panel.startswith("Generating")
     ):
         return True
-    if session.phase == Phase.design and not session.design_prompt:
+    if session.phase in (Phase.design, Phase.design_teacher) and not session.design_prompt:
         return True
     if session.phase in (Phase.feedback, Phase.done) and not session.scorecard:
         return True
@@ -206,6 +209,35 @@ async def start_session(body: StartRequest) -> dict[str, Any]:
 async def start_friend_session(body: FriendStartRequest) -> dict[str, Any]:
     session = store.create_friend(mode=Mode(body.mode))
     return {"session": session.to_public()}
+
+
+@app.post("/api/session/design-teacher/start")
+async def start_design_teacher_session(
+    body: FriendStartRequest,
+) -> dict[str, Any]:
+    session = store.create_design_teacher(mode=Mode(body.mode))
+    await ensure_design_prompt(session)
+    return {"session": session.to_public()}
+
+
+@app.post("/api/session/{session_id}/design-teacher/next")
+async def design_teacher_next(session_id: str) -> dict[str, Any]:
+    session = store.get(session_id)
+    if not session:
+        raise HTTPException(404, "session not found")
+    if session.phase != Phase.design_teacher:
+        raise HTTPException(400, "design-teacher next only in design_teacher phase")
+    session.design_prompt = {}
+    design = await generate_design_prompt("rap")
+    store.apply_design(session, design)
+    line = opening_line(
+        Phase.design_teacher.value, session.context(), session.run_style.value
+    )
+    session.append("assistant", line)
+    return {
+        "session": session.to_public(),
+        "live_briefing": session.live_briefing(),
+    }
 
 
 @app.get("/api/session/{session_id}")

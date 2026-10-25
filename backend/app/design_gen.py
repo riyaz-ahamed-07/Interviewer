@@ -1,9 +1,10 @@
-"""Generate unique RAP-flavored system design prompts each session."""
+"""Generate RAP-flavored system design prompts (moderate, interview-real)."""
 
 from __future__ import annotations
 
 import json
 import logging
+import random
 import re
 from typing import Any
 
@@ -11,58 +12,106 @@ from .llm_router import chat_completion_groq
 
 logger = logging.getLogger(__name__)
 
+_STYLE_FLAVORS = [
+    "enterprise document / PDF Q&A with OCR and tables (longer architecture walk)",
+    "telecom / network ops assistant with tools and escalation",
+    "student tutoring chatbot — handle insufficient info + hallucinations",
+    "internal support bot with RAG + human review",
+    "short 5-minute scope: one clear failure mode (hallucination OR missing context)",
+    "bidding / RFP assistant with citations",
+    "manufacturing manual Q&A in customer VPC",
+]
+
 GEN_SYSTEM = """You invent ORIGINAL system-design interview prompts for an ML / LLM engineer intern
-at an enterprise AI company like RAP (document intelligence, RAG, agents, OCR, serving in customer VPC).
+screen (RAP-style). Complexity should be MODERATE — not FAANG mega-scale.
 
 Return ONLY valid JSON (no markdown fences) with keys:
 - id: short snake_case id
 - title: short title
-- summary: 2-4 sentences describing the business problem and hard constraints
-- ask: what the candidate must draw/defend (boxes, flow, failures, metrics, alternatives)
+- summary: 2–4 sentences (business problem + 1–2 constraints)
+- ask: what to draw/defend
+- duration_hint: "short" (≈5–10 min) or "standard" (≈20–40 min)
 
 Rules:
-- Each prompt must be DIFFERENT (vary domain: manufacturing, telecom, legal, healthcare, bidding, support, audio, etc.).
-- Must require an architecture (ingest → understanding → retrieval/agents → guardrails → human review → API/serve) flavor when relevant.
-- Include at least one RAP-ish constraint: private VPC, Graph RAG optional, Image/HyDE RAG, OCR/tables, multi-agent workgroup, memory, RPA, or FastAPI serving.
-- Do NOT give the answer architecture — only the problem + what to draw.
-- Keep summary and ask speakable (interviewer may read them aloud).
+- Match real RAP variety: sometimes a bigger architecture scenario, sometimes telecom,
+  sometimes a student chatbot focused on insufficient information / hallucination.
+- Require a practical architecture (ingest → understand/retrieve → generate → guardrails
+  → optional human review → API) when duration_hint is standard.
+- For short: narrow to ONE main risk (hallucination, missing context, latency, or tool failure)
+  and ask how they handle it end-to-end.
+- Include at most one RAP-ish constraint when relevant: private VPC, OCR/tables, RAG,
+  Graph RAG optional, FastAPI serving, human-in-loop.
+- Do NOT give the answer architecture — only the problem + what to defend.
+- Keep summary/ask speakable aloud. No jargon walls.
 """
 
-_FALLBACK = {
-    "id": "enterprise_doc_qa",
-    "title": "Enterprise document Q&A",
-    "summary": (
-        "Employees ask questions over large PDFs and Word manuals with tables and "
-        "scanned pages. Need RAG, optional Image/HyDE retrieval, human review for "
-        "high-stakes answers, FastAPI in the customer VPC."
-    ),
-    "ask": (
-        "Draw ingest → OCR/understand → chunk/embed → retrieve → agent/tools/memory → "
-        "guardrails → human-in-loop → API. Defend each box: why, alternative, failure, metric."
-    ),
-}
+_FALLBACKS = [
+    {
+        "id": "student_tutor_bot",
+        "title": "Student tutor chatbot",
+        "summary": (
+            "Build a chatbot for college students asking course questions. "
+            "Sometimes the syllabus PDF lacks the answer. Model may hallucinate."
+        ),
+        "ask": (
+            "Draw the flow. Explain how you detect insufficient context, refuse or "
+            "clarify, ground answers, and stop hallucinations. Name metrics."
+        ),
+        "duration_hint": "short",
+    },
+    {
+        "id": "enterprise_doc_qa",
+        "title": "Enterprise document Q&A",
+        "summary": (
+            "Employees ask questions over large PDFs and Word manuals with tables and "
+            "scanned pages. Need RAG, optional image retrieval, human review for "
+            "high-stakes answers, FastAPI in the customer VPC."
+        ),
+        "ask": (
+            "Draw ingest → OCR/understand → chunk/embed → retrieve → generate → "
+            "guardrails → human-in-loop → API. Defend each box: why, alternative, failure, metric."
+        ),
+        "duration_hint": "standard",
+    },
+    {
+        "id": "telecom_ops_assistant",
+        "title": "Telecom ops assistant",
+        "summary": (
+            "Network ops wants an assistant that reads alerts, pulls runbooks, and "
+            "suggests next steps. Wrong advice can page the wrong team."
+        ),
+        "ask": (
+            "Sketch retrieval + tools + escalation. How do you handle stale runbooks, "
+            "missing ticket context, and unsafe actions?"
+        ),
+        "duration_hint": "standard",
+    },
+]
 
 
-async def generate_design_prompt(difficulty: str = "medium") -> dict[str, Any]:
+async def generate_design_prompt(difficulty: str = "rap") -> dict[str, Any]:
+    _ = difficulty
+    flavor = random.choice(_STYLE_FLAVORS)
+    seed = random.randint(1000, 9999)
     user = (
-        f"Difficulty flavor: {difficulty} "
-        "(easy=narrower scope, hard=more constraints / multi-agent / failure modes).\n"
-        "Invent a NEW prompt now. Avoid repeating the classic 'manufacturing PDF Q&A' wording."
+        f"Style flavor: {flavor}\n"
+        f"Seed: {seed}\n"
+        "Invent a NEW moderate RAP-style prompt. Avoid copying prior titles."
     )
     try:
         raw = await chat_completion_groq(GEN_SYSTEM, user)
     except Exception:
         logger.exception("Design gen threw")
-        return dict(_FALLBACK)
+        return dict(random.choice(_FALLBACKS))
 
     if raw.startswith("[LLM error"):
         logger.warning("Design gen LLM error: %s", raw[:200])
-        return dict(_FALLBACK)
+        return dict(random.choice(_FALLBACKS))
 
     parsed = _parse(raw)
     if not parsed.get("title") or not parsed.get("summary"):
         logger.warning("Design gen parse weak")
-        return dict(_FALLBACK)
+        return dict(random.choice(_FALLBACKS))
     return parsed
 
 
@@ -83,9 +132,13 @@ def _parse(raw: str) -> dict[str, Any]:
             return {}
     if not isinstance(data, dict):
         return {}
+    hint = str(data.get("duration_hint") or "standard").strip().lower()
+    if hint not in ("short", "standard"):
+        hint = "standard"
     return {
         "id": str(data.get("id") or "generated"),
         "title": str(data.get("title") or "").strip(),
         "summary": str(data.get("summary") or "").strip(),
         "ask": str(data.get("ask") or "").strip(),
+        "duration_hint": hint,
     }

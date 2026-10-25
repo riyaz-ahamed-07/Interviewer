@@ -23,7 +23,6 @@ type Props = {
 };
 
 const WATCH_MS = 2500;
-
 function labelsFrom(elements: readonly Record<string, unknown>[]): string[] {
   return elements
     .map((el) => {
@@ -71,6 +70,7 @@ export function Board({ onSubmit, onWatch, watchEnabled = false }: Props) {
   const dirtyRef = useRef(false);
   const lastJsonRef = useRef("");
   const onWatchRef = useRef(onWatch);
+  const boardRef = useRef<HTMLDivElement>(null);
   onWatchRef.current = onWatch;
 
   const submit = useCallback(async () => {
@@ -110,30 +110,56 @@ export function Board({ onSubmit, onWatch, watchEnabled = false }: Props) {
     return () => clearInterval(tick);
   }, [api, onWatch, watchEnabled]);
 
+  // Ctrl/Cmd+Left/Right trigger browser history back/forward and yank the
+  // Excalidraw viewport (looks like a sudden unzoom). Block only that default.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const root = boardRef.current;
+      if (!root) return;
+      const t = e.target as Node | null;
+      if (!t || !root.contains(t)) return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, []);
+
   return (
-    <div className="board">
-      <div className="board-canvas">
-        <Excalidraw
-          excalidrawAPI={(a) => setApi(a as unknown as ExcalidrawAPI)}
-          theme="light"
-          onChange={() => {
-            dirtyRef.current = true;
-          }}
-        />
-      </div>
-      <div className="board-toolbar">
+    <div className="board" ref={boardRef}>
+      <div className="board-actions">
         <button
           type="button"
+          className="board-ask-btn"
           onClick={() => void submit()}
           disabled={busy || !api}
         >
           {busy ? "Sending…" : "I’ve drawn — ask me"}
         </button>
         {watchEnabled && (
-          <span className="muted board-watch-hint">
-            Watching scene JSON silently
-          </span>
+          <span className="muted board-watch-hint">Canvas watch on</span>
         )}
+      </div>
+      <div className="board-canvas">
+        <Excalidraw
+          excalidrawAPI={(a) => setApi(a as unknown as ExcalidrawAPI)}
+          theme="light"
+          UIOptions={{
+            dockedSidebarBreakpoint: 0,
+            canvasActions: {
+              changeViewBackgroundColor: false,
+              clearCanvas: false,
+              loadScene: false,
+              saveToActiveFile: false,
+              toggleTheme: false,
+              saveAsImage: false,
+            },
+          }}
+          onChange={() => {
+            dirtyRef.current = true;
+          }}
+        />
       </div>
     </div>
   );

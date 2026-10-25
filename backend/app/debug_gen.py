@@ -1,13 +1,13 @@
-"""Generate unique chained PyTorch debug drills (no fixed bank).
+"""Generate RAP-style short PyTorch debug drills (like real Wed/Thu/Fri screens).
 
-Every planted bug must FAIL LOUDLY (raise) when that stage is reached —
-no silent wrong-answer / train-wrong bugs.
+Not giant model code — tiny Linear/CE scripts with 2–4 loud, chained bugs.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import random
 import re
 from typing import Any
 
@@ -15,7 +15,6 @@ from .llm_router import chat_completion_groq
 
 logger = logging.getLogger(__name__)
 
-# Match against hidden_bugs / cascade notes only (not raw code boilerplate).
 _SILENT_BUG_RE = re.compile(
     r"softmax|"
     r"forgot(?:ten)?\s+zero[_\s-]?grad|missing\s+zero[_\s-]?grad|no\s+zero[_\s-]?grad|"
@@ -28,92 +27,135 @@ _SILENT_BUG_RE = re.compile(
     re.I,
 )
 
-DIFFICULTY_SPEC = {
-    "easy": (
-        "Exactly 2 bugs. BOTH must raise RuntimeError/TypeError/ValueError "
-        "when reached (never silent wrong math). Typical pair: (1) tensor "
-        "device mismatch CPU vs CUDA, (2) after device fix, Linear in_features "
-        "or view/flatten shape mismatch. Code ~25-40 lines."
-    ),
-    "medium": (
-        "3-4 CHAINED bugs. EACH must raise when that stage is hit. Allowed "
-        "families only: device mismatch, shape/view/flatten vs Linear/"
-        "Conv channels, CrossEntropy target dtype (float vs long), CE batch "
-        "size mismatch, non-contiguous .view that errors, wrong ndim for "
-        "matmul/bmm, indexing out of range. Fixing A must reveal B. "
-        "Code ~40-70 lines. No softmax-before-CE, no forgotten zero_grad, "
-        "no train/eval."
-    ),
-    "hard": (
-        "4-6 deeply chained bugs; EVERY one raises. Mix device, shapes, "
-        "dtype, contiguous views, broadcast that errors, parameter not "
-        "registered then used in a way that blows up, wrong Conv/Linear "
-        "channel math. Cascades: fixing step-1 surfaces step-3. "
-        "Code ~60-100 lines. Still ZERO silent logic bugs."
-    ),
-}
+# Real RAP screens were ~15–30 lines: device, Linear in_features, CE target dtype,
+# CUDA→numpy. Generate NEW snippets at that difficulty — never copy these verbatim.
+_STYLE_EXAMPLES = """
+STYLE EXAMPLES (do NOT copy; invent different numbers / names / order):
 
+Example A — device + dtype flavor:
+```python
+import torch
+import torch.nn as nn
 
-GEN_SYSTEM = """You generate ORIGINAL PyTorch debugging interview snippets.
+device = "cuda"
+model = nn.Linear(10, 3).to(device)
+x = torch.randn(32, 10)
+y = torch.randint(0, 3, (32,)).int()
+loss = nn.CrossEntropyLoss()(model(x), y)
+loss.backward()
+print(loss.item())
+```
+
+Example B — shape + float targets + .numpy() on CUDA flavor:
+```python
+import torch
+import torch.nn as nn
+
+device = "cuda"
+x = torch.randn(32, 3).to(device)
+y = torch.randint(0, 2, (32,)).float().to(device)
+model = nn.Linear(4, 2).to(device)
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+for epoch in range(5):
+    optimizer.zero_grad()
+    out = model(x)
+    loss = criterion(out, y)
+    loss.backward()
+    optimizer.step()
+preds = out.argmax(1)
+print("Predictions:", preds.numpy())
+```
+
+Example C — shape + CUDA numpy flavor (cleaner loop):
+```python
+import torch
+import torch.nn as nn
+
+device = "cuda"
+x = torch.rand(32, 3).to(device)
+y = torch.randint(0, 2, (32,)).to(device)
+model = nn.Linear(4, 2).to(device)
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+for epoch in range(5):
+    optimizer.zero_grad()
+    out = model(x)
+    loss = criterion(out, y)
+    loss.backward()
+    optimizer.step()
+preds = out.argmax(1)
+print("Predictions:", preds.numpy())
+```
+"""
+
+GEN_SYSTEM = f"""You generate ORIGINAL PyTorch debugging interview snippets for RAP ML intern screens.
 Return ONLY valid JSON (no markdown fences) with keys:
 - title: short title (must NOT spoil the bugs)
 - code: full runnable Python script (broken on purpose)
-- hidden_bugs: array of brief bug descriptions in intended discovery order (PRIVATE — never appear in code)
-- cascade_note: one sentence on how early fixes interact with later errors (PRIVATE)
+- hidden_bugs: array of brief bug descriptions in discovery order (PRIVATE)
+- cascade_note: one sentence on how early fixes reveal later errors (PRIVATE)
 
-Rules for code:
-- Must be self-contained: imports, model, fake batch, loss, backward/step.
-- CRITICAL — EXPLICIT FAILURES ONLY:
-  Every planted bug MUST raise an exception (RuntimeError, TypeError, ValueError,
-  IndexError, etc.) when that line/stage executes. The candidate discovers bugs
-  by reading TRACEBACKS after each fix+rerun.
-- FORBIDDEN (silent / implicit bugs that run but give wrong answers):
-  softmax before CrossEntropyLoss, forgotten zero_grad, train vs eval,
-  wrong but runnable loss math, wrong learning rate, wrong reduction,
-  BatchNorm train/eval, detach mistakes that still print a number, any
-  "trains wrong with no crash".
-- Prefer device mismatch, shape/view/Linear in_features, CE target dtype,
-  batch-size mismatch, illegal views, matmul rank errors.
-- Bugs must CHAIN: fixing an early crash reveals the next crash.
-- Prefer realistic ML-intern mistakes, not trivia syntax typos.
-- Use torch / torch.nn only (no internet, no files).
+{_STYLE_EXAMPLES}
+
+HARD STYLE RULES (match real RAP interviews):
+- Keep it SHORT: about 12–35 lines. Tiny Linear (+ optional short train loop). NO CNN, NO custom Module classes unless tiny, NO transformers.
+- Plant 2–4 CHAINED bugs that RAISE (RuntimeError / TypeError / ValueError / AttributeError).
+- Allowed bug families ONLY (mix 2–4):
+  1) device mismatch (model/x/y not all on same device)
+  2) Linear in_features ≠ x last dim
+  3) CrossEntropyLoss targets wrong dtype (float / int32 instead of long)
+  4) CE class count / target range mismatch
+  5) .numpy() or similar on a CUDA tensor
+  6) batch-size mismatch between logits and targets
+- EVERY bug must raise when that stage runs. No silent wrong-answer bugs.
+- FORBIDDEN: softmax-before-CE, forgotten zero_grad as the "main" bug, train/eval,
+  wrong LR, giant models, file I/O, comments/docstrings, spoiler words in code.
 - CRITICAL: code must contain ZERO comments and ZERO docstrings.
-  No # lines, no \"\"\" ... \"\"\", no spoiler words like bug/fix/wrong/TODO/FIXME/should/missing.
-- Vary architecture each time (MLP, tiny CNN, embedding+linear, etc.).
-- End of script may print a loss only after a path that would have crashed
-  if any planted bug remained — do not add assert checks that spoil bugs.
+- Use torch / torch.nn only. Prefer device="cuda" like Colab interviews (still valid if CUDA missing — device bugs still raise).
+- Vary batch sizes, feature dims, class counts, and bug ORDER each time so it is not a copy of the examples.
 """
 
 
-async def generate_debug_drill(difficulty: str) -> dict[str, Any]:
-    level = difficulty if difficulty in DIFFICULTY_SPEC else "medium"
+async def generate_debug_drill(difficulty: str = "rap") -> dict[str, Any]:
+    """difficulty is ignored for selection — RAP screens are one band. Kept for API compat."""
+    _ = difficulty
+    seed = random.randint(1000, 9999)
     user = (
-        f"Difficulty: {level}\n"
-        f"Spec: {DIFFICULTY_SPEC[level]}\n"
-        "Invent a NEW snippet now. Different from common MNIST Linear(784) demos if possible.\n"
-        "Again: NO comments. EVERY bug must RAISE — no silent wrong-output bugs."
+        f"Invent a NEW RAP-style short snippet now (seed={seed}). "
+        "Different dims and bug order from the style examples. "
+        "NO comments. EVERY bug must RAISE."
     )
-    drill = await _generate_once(level, user)
-    if drill and not _has_silent_signals(drill):
+    drill = await _generate_once(user)
+    if drill and not _has_silent_signals(drill) and _looks_rap_short(drill):
         return drill
 
-    if drill and _has_silent_signals(drill):
-        logger.warning("Drill had silent-bug signals; regenerating once")
-        retry_user = (
+    if drill and (_has_silent_signals(drill) or not _looks_rap_short(drill)):
+        logger.warning("Drill rejected (silent or too complex); regenerating")
+        retry = (
             user
-            + "\nPREVIOUS DRAFT REJECTED: it included silent/logic bugs "
-            "(e.g. softmax-before-CE, zero_grad, train/eval). "
-            "Rewrite with ONLY raising bugs (device/shape/dtype/batch)."
+            + "\nREJECTED DRAFT: keep under ~35 lines, only Linear+CE style, "
+            "only raising device/shape/dtype/numpy bugs. No CNN / custom nets."
         )
-        drill = await _generate_once(level, retry_user)
-        if drill and not _has_silent_signals(drill):
+        drill = await _generate_once(retry)
+        if drill and not _has_silent_signals(drill) and _looks_rap_short(drill):
             return drill
 
-    logger.warning("Using emergency loud-fail drill")
-    return _emergency_drill(level)
+    logger.warning("Using RAP emergency drill")
+    return _emergency_drill()
 
 
-async def _generate_once(level: str, user: str) -> dict[str, Any] | None:
+def _looks_rap_short(drill: dict[str, Any]) -> bool:
+    code = drill.get("code") or ""
+    lines = [ln for ln in code.splitlines() if ln.strip()]
+    if len(lines) > 45:
+        return False
+    if re.search(r"Conv2d|Transformer|MultiheadAttention|nn\.Sequential", code):
+        return False
+    return "nn.Linear" in code or "Linear(" in code
+
+
+async def _generate_once(user: str) -> dict[str, Any] | None:
     try:
         raw = await chat_completion_groq(GEN_SYSTEM, user)
     except Exception:
@@ -129,12 +171,11 @@ async def _generate_once(level: str, user: str) -> dict[str, Any] | None:
         logger.warning("Drill gen parse weak")
         return None
     drill["code"] = strip_comments(drill["code"])
-    drill["difficulty"] = level
+    drill["difficulty"] = "rap"
     return drill
 
 
 def _has_silent_signals(drill: dict[str, Any]) -> bool:
-    """Reject drills that describe or plant classic silent bugs."""
     meta = " ".join(
         [
             " ".join(str(b) for b in (drill.get("hidden_bugs") or [])),
@@ -143,7 +184,6 @@ def _has_silent_signals(drill: dict[str, Any]) -> bool:
     )
     if _SILENT_BUG_RE.search(meta):
         return True
-    # softmax(...) into CrossEntropyLoss is the classic silent CE bug
     code = drill.get("code") or ""
     if re.search(r"softmax\s*\(", code) and re.search(
         r"CrossEntropyLoss\s*\(", code
@@ -153,8 +193,9 @@ def _has_silent_signals(drill: dict[str, Any]) -> bool:
 
 
 def strip_comments(code: str) -> str:
-    """Remove comments/docstrings so bugs are not spoiled."""
-    code = re.sub(r'^\s*("""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\')\s*', "", code, flags=re.M)
+    code = re.sub(
+        r'^\s*("""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\')\s*', "", code, flags=re.M
+    )
     out_lines: list[str] = []
     for line in code.splitlines():
         stripped = line.lstrip()
@@ -209,42 +250,61 @@ def _parse_drill(raw: str) -> dict[str, Any]:
     return {}
 
 
-def _emergency_drill(level: str) -> dict[str, Any]:
-    # Both bugs always raise (CPU or CUDA): wrong Linear in_features first,
-    # then float CE targets after the shape fix.
-    code = '''import torch
+def _emergency_drill() -> dict[str, Any]:
+    """Fallback patterned on real RAP screens (new dims)."""
+    variants = [
+        {
+            "title": "RAP Linear device/dtype",
+            "code": """import torch
 import torch.nn as nn
 
-class TinyCNN(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.conv = nn.Conv2d(1, 8, 3, padding=1)
-        self.fc = nn.Linear(8 * 14 * 14, 10)
-
-    def forward(self, x):
-        x = torch.relu(self.conv(x))
-        x = x.view(x.size(0), -1)
-        return self.fc(x)
-
-model = TinyCNN()
-opt = torch.optim.Adam(model.parameters(), lr=1e-3)
-crit = nn.CrossEntropyLoss()
-xb = torch.randn(16, 1, 28, 28)
-yb = torch.randint(0, 10, (16,)).float()
-opt.zero_grad()
-out = model(xb)
-loss = crit(out, yb)
+device = "cuda"
+model = nn.Linear(8, 4).to(device)
+x = torch.randn(16, 8)
+y = torch.randint(0, 4, (16,)).int()
+loss = nn.CrossEntropyLoss()(model(x), y)
 loss.backward()
-opt.step()
 print(loss.item())
-'''
+""",
+            "hidden_bugs": [
+                "x (and y) on CPU while model on CUDA → device RuntimeError",
+                "CE targets are int32; need long/int64 → TypeError/RuntimeError",
+            ],
+            "cascade_note": "Device fix reveals float/int target dtype crash.",
+        },
+        {
+            "title": "RAP Linear shape + CUDA numpy",
+            "code": """import torch
+import torch.nn as nn
+
+device = "cuda"
+x = torch.randn(24, 5).to(device)
+y = torch.randint(0, 3, (24,)).float().to(device)
+model = nn.Linear(7, 3).to(device)
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.SGD(model.parameters(), lr=0.05)
+for epoch in range(3):
+    optimizer.zero_grad()
+    out = model(x)
+    loss = criterion(out, y)
+    loss.backward()
+    optimizer.step()
+preds = out.argmax(1)
+print(preds.numpy())
+""",
+            "hidden_bugs": [
+                "Linear expects 7 features but x has 5 → shape RuntimeError",
+                "CE targets are float → dtype RuntimeError",
+                "preds.numpy() on CUDA tensor → TypeError",
+            ],
+            "cascade_note": "Shape then dtype then CUDA numpy.",
+        },
+    ]
+    pick = random.choice(variants)
     return {
-        "title": f"Emergency TinyCNN ({level})",
-        "code": strip_comments(code),
-        "hidden_bugs": [
-            "fc expects 8*14*14 but flattened conv is 8*28*28 → shape RuntimeError",
-            "CE targets are float; must be long/int64 → TypeError/RuntimeError",
-        ],
-        "cascade_note": "Shape fix reveals float-target CE crash.",
-        "difficulty": level,
+        "title": pick["title"],
+        "code": strip_comments(pick["code"]),
+        "hidden_bugs": pick["hidden_bugs"],
+        "cascade_note": pick["cascade_note"],
+        "difficulty": "rap",
     }

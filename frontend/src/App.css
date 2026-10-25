@@ -206,7 +206,7 @@ textarea {
 .cta,
 .top-actions button,
 .compose button,
-.board-toolbar button,
+.board-ask-btn,
 .work-float-btn,
 .pause-btn {
   font: inherit;
@@ -522,31 +522,56 @@ textarea {
   flex: 1;
   min-height: 0;
   height: 100%;
+  overflow: hidden;
+}
+
+.board-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.4rem 0.55rem;
+  border-bottom: 2px solid var(--line-soft);
+  background: #fffdf6;
+  z-index: 5;
+}
+
+.board-ask-btn {
+  font-family: var(--title);
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0.35rem 0.85rem;
+  border: 2px solid var(--red);
+  border-radius: var(--blob-btn);
+  background: var(--hl);
+  color: var(--ink2);
+  cursor: pointer;
+}
+
+.board-ask-btn:hover:not(:disabled) {
+  background: #fff7d6;
+}
+
+.board-ask-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .board-canvas {
   flex: 1;
   min-height: 0;
   width: 100%;
-  height: 100%;
   border: none;
   position: relative;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  touch-action: none;
 }
 
 .board-canvas > div,
 .board-canvas .excalidraw {
   width: 100% !important;
   height: 100% !important;
-}
-
-.board-toolbar {
-  position: absolute;
-  bottom: 0.75rem;
-  left: 0.75rem;
-  z-index: 2;
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
 }
 
 .board-watch-hint {

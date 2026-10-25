@@ -7,11 +7,12 @@ import {
   navigateLlmTopic,
   SessionGoneError,
   speakFallback,
+  nextDesignTeacherQuestion,
+  startDesignTeacherSession,
   startFriendSession,
   startSession,
   submitDiagram,
   textTurn,
-  type DebugDifficulty,
   type Mode,
   type RunStyle,
   type Session,
@@ -63,8 +64,6 @@ function playTimerBeep() {
 export default function App() {
   const [mode, setMode] = useState<Mode>("medium");
   const [runStyle, setRunStyle] = useState<RunStyle>("interview");
-  const [debugDifficulty, setDebugDifficulty] =
-    useState<DebugDifficulty>("medium");
   const [session, setSession] = useState<Session | null>(null);
   const [paste, setPaste] = useState("");
   const [statusLine, setStatusLine] = useState("Checking backend…");
@@ -142,7 +141,12 @@ export default function App() {
 
   useEffect(() => {
     if (!session) return;
-    if (session.phase === "friend" || session.phase_budget_seconds <= 0) return;
+    if (
+      session.phase === "friend" ||
+      session.phase === "design_teacher" ||
+      session.phase_budget_seconds <= 0
+    )
+      return;
     const t = window.setInterval(() => {
       setLocalSecs((s) => Math.max(0, s - 1));
     }, 1000);
@@ -265,15 +269,9 @@ export default function App() {
     setBusy(true);
     setStatusLine("Starting interview…");
     try {
-      const { session: s } = await startSession(
-        mode,
-        runStyle,
-        debugDifficulty,
-      );
+      const { session: s } = await startSession(mode, runStyle, "medium");
       setSession(s);
-      setStatusLine(
-        `${s.run_style} · ${s.debug_difficulty} · starts with intro`,
-      );
+      setStatusLine(`${s.run_style} · RAP-style debug · starts with intro`);
       if (wantLive) {
         try {
           await live.connect(s.id);
@@ -309,6 +307,55 @@ export default function App() {
         await playTts(s.messages.at(-1)?.content ?? "");
       }
     } finally {
+      setBusy(false);
+    }
+  };
+
+  const startDesignTeacher = async () => {
+    setBusy(true);
+    setStatusLine("Loading a system-design scenario…");
+    try {
+      const { session: s } = await startDesignTeacherSession(mode);
+      setSession(s);
+      setStatusLine("Design teacher · walk the interview method");
+      if (wantLive) {
+        try {
+          await live.connect(s.id);
+        } catch (e) {
+          setWantLive(false);
+          setStatusLine(`Live failed (${String(e)}). Text + TTS fallback.`);
+          await playTts(s.messages.at(-1)?.content ?? "");
+        }
+      } else {
+        await playTts(s.messages.at(-1)?.content ?? "");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const nextDesignQuestion = async () => {
+    if (!session || session.phase !== "design_teacher") return;
+    setBusy(true);
+    setStatusLine("New design question…");
+    try {
+      const { session: s, live_briefing } = await nextDesignTeacherQuestion(
+        session.id,
+      );
+      setSession(s);
+      setBusy(false);
+      setStatusLine(`Design · ${s.design_prompt?.title ?? "new scenario"}`);
+      if (voiceActive && live_briefing) {
+        live.sendPhaseSync(live_briefing);
+      } else {
+        void playTts(s.messages.at(-1)?.content ?? "");
+      }
+    } catch (e) {
+      if (e instanceof SessionGoneError) {
+        bumpToLobby(
+          "Session expired (backend reloaded). Start a new interview.",
+        );
+      } else setStatusLine(String(e));
       setBusy(false);
     }
   };
@@ -476,6 +523,8 @@ export default function App() {
     `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
   const isFriend = session?.phase === "friend";
+  const isDesignTeacher = session?.phase === "design_teacher";
+  const isCoachMode = isFriend || isDesignTeacher;
   const timerExpired =
     Boolean(session) && session!.phase_budget_seconds > 0 && localSecs <= 0;
 
@@ -501,9 +550,8 @@ export default function App() {
             ML Mock <span>Interviewer</span>
           </h1>
           <p className="lede">
-            Each run builds a new chained debug. Practice gives hints. Interview
-            does not. Or call a judgmental study friend to grill your
-            explanations.
+            RAP-style mock: short PyTorch debug bugs, fixed LLM core topics,
+            then coaches for concepts and system design.
           </p>
           <p className="status">{statusLine}</p>
           <p className="lede">
@@ -521,13 +569,27 @@ export default function App() {
           className="cta"
           disabled={busy}
           onClick={() => void startFriend()}
-          style={{ marginBottom: "0.75rem" }}
+          style={{ marginBottom: "0.55rem" }}
         >
           {busy ? "Connecting…" : "Talk to a study friend"}
         </button>
+        <p className="lede" style={{ marginTop: 0, marginBottom: "0.85rem" }}>
+          Explain concepts after you learn them. He argues, quizzes, and
+          corrects you.
+        </p>
+
+        <button
+          type="button"
+          className="cta"
+          disabled={busy}
+          onClick={() => void startDesignTeacher()}
+          style={{ marginBottom: "0.55rem" }}
+        >
+          {busy ? "Loading…" : "System design teacher"}
+        </button>
         <p className="lede" style={{ marginTop: 0 }}>
-          Freely explain concepts after you learn them. He will argue, quiz, and
-          correct you — not nod along.
+          Get a RAP-style design prompt and learn the interview walkthrough
+          step-by-step. Next question loads a new scenario.
         </p>
 
         <p className="section-label">Run style</p>
@@ -543,36 +605,11 @@ export default function App() {
           <button
             type="button"
             className={runStyle === "interview" ? "mode active" : "mode"}
-            onClick={() => {
-              setRunStyle("interview");
-              if (debugDifficulty === "easy") setDebugDifficulty("medium");
-            }}
+            onClick={() => setRunStyle("interview")}
           >
             <strong>Interview</strong>
             <span>No hints · real RAP vibe</span>
           </button>
-        </section>
-
-        <p className="section-label">Debug code difficulty</p>
-        <section className="modes three">
-          {(["easy", "medium", "hard"] as DebugDifficulty[]).map((d) => (
-            <button
-              key={d}
-              type="button"
-              className={debugDifficulty === d ? "mode active" : "mode"}
-              onClick={() => setDebugDifficulty(d)}
-              disabled={runStyle === "interview" && d === "easy"}
-            >
-              <strong>{d}</strong>
-              <span>
-                {d === "easy"
-                  ? "2 bugs"
-                  : d === "medium"
-                    ? "3–4 chained"
-                    : "4–6 cascade"}
-              </span>
-            </button>
-          ))}
         </section>
 
         <p className="section-label">Interviewer tone</p>
@@ -616,16 +653,18 @@ export default function App() {
       <header className="topbar">
         <div className="topbar-left">
           <strong>{session.phase.toUpperCase()}</strong>
-          {!isFriend ? (
+          {!isCoachMode ? (
             <>
               <span className="pill">{session.run_style}</span>
-              <span className="pill">{session.debug_difficulty}</span>
+              <span className="pill">rap-debug</span>
               <span className={timerExpired ? "timer timer-expired" : "timer"}>
                 {mmss(localSecs)}
               </span>
             </>
           ) : (
-            <span className="pill">study friend</span>
+            <span className="pill">
+              {isDesignTeacher ? "design teacher" : "study friend"}
+            </span>
           )}
         </div>
         <div className="top-actions">
@@ -638,7 +677,16 @@ export default function App() {
               {live.paused ? "Resume voice" : "Pause voice"}
             </button>
           )}
-          {!isFriend && session.phase === "llm" && (
+          {isDesignTeacher && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void nextDesignQuestion()}
+            >
+              {busy ? "Loading…" : "Next question"}
+            </button>
+          )}
+          {!isCoachMode && session.phase === "llm" && (
             <>
               <button
                 type="button"
@@ -660,7 +708,7 @@ export default function App() {
               </button>
             </>
           )}
-          {!isFriend &&
+          {!isCoachMode &&
             session.phase !== "done" &&
             session.phase !== "feedback" && (
               <button
@@ -671,7 +719,7 @@ export default function App() {
                 {busy ? "Loading…" : phasePrep ? "Preparing…" : "Next phase"}
               </button>
             )}
-          {!isFriend && session.phase === "feedback" && (
+          {!isCoachMode && session.phase === "feedback" && (
             <button
               type="button"
               disabled={busy || phasePrep}
@@ -712,6 +760,15 @@ export default function App() {
                 or fuzzy answers get called out, then you restate them properly.
               </p>
             </div>
+          )}
+
+          {session.phase === "design_teacher" && (
+            <Board
+              key={session.design_prompt?.id ?? "design-teacher"}
+              onSubmit={onBoard}
+              onWatch={onBoardWatch}
+              watchEnabled={voiceActive}
+            />
           )}
 
           {session.phase === "intro" && (

@@ -13,7 +13,8 @@ export type Phase =
   | "llm"
   | "feedback"
   | "done"
-  | "friend";
+  | "friend"
+  | "design_teacher";
 
 export type ChatMsg = {
   role: string;
@@ -61,6 +62,7 @@ export type Session = {
     title: string;
     summary: string;
     ask: string;
+    duration_hint?: string;
   } | null;
   drill_title: string | null;
   llm_topics: LlmTopic[];
@@ -98,10 +100,7 @@ export function apiBase() {
   return API_BASE;
 }
 
-export function wsLiveUrl(
-  sessionId: string,
-  opts?: { resume?: boolean },
-) {
+export function wsLiveUrl(sessionId: string, opts?: { resume?: boolean }) {
   const base = API_BASE.replace(/^http/, "ws");
   const q = opts?.resume ? "?resume=1" : "";
   return `${base}/ws/live/${sessionId}${q}`;
@@ -135,6 +134,20 @@ export async function startFriendSession(mode: Mode = "medium") {
     method: "POST",
     body: JSON.stringify({ mode }),
   });
+}
+
+export async function startDesignTeacherSession(mode: Mode = "medium") {
+  return json<{ session: Session }>("/api/session/design-teacher/start", {
+    method: "POST",
+    body: JSON.stringify({ mode }),
+  });
+}
+
+export async function nextDesignTeacherQuestion(id: string) {
+  return json<{ session: Session; live_briefing?: string }>(
+    `/api/session/${id}/design-teacher/next`,
+    { method: "POST", body: "{}" },
+  );
 }
 
 export async function getSession(id: string) {

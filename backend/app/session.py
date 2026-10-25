@@ -38,6 +38,7 @@ class Phase(str, Enum):
     feedback = "feedback"
     done = "done"
     friend = "friend"
+    design_teacher = "design_teacher"
 
 
 PHASE_ORDER = [
@@ -91,6 +92,7 @@ class InterviewSession:
                 "title": "System design",
                 "summary": "Generating a unique design prompt…",
                 "ask": "Wait a moment, then draw your architecture.",
+                "duration_hint": "standard",
             },
             "run_style": self.run_style.value,
             "mode": self.mode.value,
@@ -131,6 +133,7 @@ class InterviewSession:
             Phase.llm: s.llm_seconds,
             Phase.feedback: 180,
             Phase.friend: 0,
+            Phase.design_teacher: 0,
         }.get(self.phase, 0)
 
     def seconds_remaining(self) -> int:
@@ -175,7 +178,11 @@ class InterviewSession:
             "seconds_remaining": self.seconds_remaining(),
             "phase_budget_seconds": self.phase_budget_seconds(),
             "code_panel": self.code_panel,
-            "design_prompt": ctx["design"] if self.phase == Phase.design else None,
+            "design_prompt": (
+                ctx["design"]
+                if self.phase in (Phase.design, Phase.design_teacher)
+                else None
+            ),
             "drill_title": self.drill_title if self.phase == Phase.debug else None,
             "llm_topics": topics_public if self.phase == Phase.llm else topics_public,
             "llm_topic_index": self.llm_topic_index,
@@ -241,6 +248,21 @@ class SessionStore:
         self._sessions[session.id] = session
         return session
 
+    def create_design_teacher(self, mode: Mode) -> InterviewSession:
+        session = InterviewSession(
+            id=str(uuid.uuid4()),
+            mode=mode,
+            run_style=RunStyle.practice,
+            debug_difficulty=DebugDifficulty.medium,
+            phase=Phase.design_teacher,
+            phase_started_at=time.time(),
+            code_panel="",
+            drill_title="",
+            design_prompt={},
+        )
+        self._sessions[session.id] = session
+        return session
+
     def apply_drill(self, session: InterviewSession, drill: dict[str, Any]) -> None:
         session.drill_title = str(drill.get("title") or "PyTorch debug")
         session.code_panel = str(drill.get("code") or "")
@@ -253,13 +275,14 @@ class SessionStore:
             "title": str(design.get("title") or "System design"),
             "summary": str(design.get("summary") or ""),
             "ask": str(design.get("ask") or ""),
+            "duration_hint": str(design.get("duration_hint") or "standard"),
         }
 
     def get(self, session_id: str) -> InterviewSession | None:
         return self._sessions.get(session_id)
 
     def advance_phase(self, session: InterviewSession) -> InterviewSession:
-        if session.phase == Phase.friend:
+        if session.phase in (Phase.friend, Phase.design_teacher):
             return session
         idx = PHASE_ORDER.index(session.phase)
         if idx >= len(PHASE_ORDER) - 1:
@@ -307,6 +330,7 @@ class SessionStore:
             Phase.done,
             Phase.feedback,
             Phase.friend,
+            Phase.design_teacher,
         ):
             return False
         # Practice intro: timer can hit zero (frontend beeps) but do not auto-skip
