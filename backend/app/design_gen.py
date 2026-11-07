@@ -89,14 +89,25 @@ _FALLBACKS = [
 ]
 
 
-async def generate_design_prompt(difficulty: str = "rap") -> dict[str, Any]:
-    _ = difficulty
+async def generate_design_prompt(
+    round_type: str = "rap",
+    *,
+    role: str = "",
+    company_type: str = "",
+    jd_text: str = "",
+) -> dict[str, Any]:
     flavor = random.choice(_STYLE_FLAVORS)
     seed = random.randint(1000, 9999)
+    role_bit = f" Role: {role}." if role else ""
+    company_bit = f" Company type: {company_type}." if company_type else ""
+    jd_bit = f" JD snippet: {jd_text[:600]}" if jd_text else ""
     user = (
+        f"Round type: {round_type}.{role_bit}{company_bit}\n"
         f"Style flavor: {flavor}\n"
         f"Seed: {seed}\n"
-        "Invent a NEW moderate RAP-style prompt. Avoid copying prior titles."
+        f"{jd_bit}\n"
+        "Invent a NEW moderate system-design prompt for this interview. "
+        "Avoid copying prior titles."
     )
     try:
         raw = await chat_completion_groq(GEN_SYSTEM, user)

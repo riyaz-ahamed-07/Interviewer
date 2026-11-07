@@ -10,19 +10,20 @@ type ExcalidrawAPI = {
 
 export type CanvasScene = {
   labels: string[];
-  /** Compact Excalidraw element inventory (JSON scene — not an image). */
   elements: Array<Record<string, unknown>>;
 };
 
 type Props = {
-  /** Explicit submit still sends a PNG for vision critique (same as before). */
   onSubmit: (blob: Blob, labels: string[]) => Promise<void>;
-  /** Silent continuous watch — scene JSON only; interviewer must not speak. */
   onWatch?: (scene: CanvasScene) => void;
+  onFrame?: (blob: Blob, labels: string[]) => void;
   watchEnabled?: boolean;
+  frameEnabled?: boolean;
 };
 
 const WATCH_MS = 2500;
+const FRAME_MS = 10000;
+
 function labelsFrom(elements: readonly Record<string, unknown>[]): string[] {
   return elements
     .map((el) => {
@@ -36,8 +37,20 @@ function compactScene(
   elements: readonly Record<string, unknown>[],
 ): CanvasScene {
   const live = elements.filter((el) => !el.isDeleted);
-  const compact = live.slice(0, 120).map((el) => {
+  const idLabel = new Map<string, string>();
+  for (const el of live) {
     const e = el as {
+      id?: string;
+      text?: string;
+      label?: { text?: string };
+    };
+    const text = (e.text || e.label?.text || "").trim();
+    if (e.id && text) idLabel.set(String(e.id), text.slice(0, 80));
+  }
+
+  const compact = live.slice(0, 160).map((el) => {
+    const e = el as {
+      id?: string;
       type?: string;
       text?: string;
       label?: { text?: string };
@@ -46,8 +59,11 @@ function compactScene(
       width?: number;
       height?: number;
       points?: unknown;
+      startBinding?: { elementId?: string } | null;
+      endBinding?: { elementId?: string } | null;
     };
     const row: Record<string, unknown> = {
+      id: e.id,
       type: e.type,
       x: Math.round(Number(e.x) || 0),
       y: Math.round(Number(e.y) || 0),
@@ -56,38 +72,64 @@ function compactScene(
     };
     const text = (e.text || e.label?.text || "").trim();
     if (text) row.text = text.slice(0, 80);
-    if (e.type === "arrow" && Array.isArray(e.points)) {
-      row.points = e.points.length;
+    if (e.type === "arrow") {
+      if (Array.isArray(e.points)) row.points = e.points.length;
+      if (e.startBinding?.elementId) {
+        row.startBinding = { elementId: e.startBinding.elementId };
+        row.startLabel = idLabel.get(e.startBinding.elementId) || "";
+      }
+      if (e.endBinding?.elementId) {
+        row.endBinding = { elementId: e.endBinding.elementId };
+        row.endLabel = idLabel.get(e.endBinding.elementId) || "";
+      }
     }
     return row;
   });
   return { labels: labelsFrom(live), elements: compact };
 }
 
-export function Board({ onSubmit, onWatch, watchEnabled = false }: Props) {
+async function sceneBlob(
+  api: ExcalidrawAPI,
+): Promise<{ blob: Blob; labels: string[] }> {
+  const elements = api.getSceneElements();
+  const labels = labelsFrom(elements);
+  const blob = await exportToBlob({
+    elements: elements as never,
+    appState: {
+      ...api.getAppState(),
+      exportBackground: true,
+      exportWithDarkMode: false,
+    } as never,
+    files: api.getFiles() as never,
+    mimeType: "image/jpeg",
+    quality: 0.72,
+  });
+  return { blob, labels };
+}
+
+export function Board({
+  onSubmit,
+  onWatch,
+  onFrame,
+  watchEnabled = false,
+  frameEnabled = false,
+}: Props) {
   const [api, setApi] = useState<ExcalidrawAPI | null>(null);
   const [busy, setBusy] = useState(false);
   const dirtyRef = useRef(false);
   const lastJsonRef = useRef("");
+  const lastFrameJsonRef = useRef("");
   const onWatchRef = useRef(onWatch);
+  const onFrameRef = useRef(onFrame);
   const boardRef = useRef<HTMLDivElement>(null);
   onWatchRef.current = onWatch;
+  onFrameRef.current = onFrame;
 
   const submit = useCallback(async () => {
     if (!api) return;
     setBusy(true);
     try {
-      const elements = api.getSceneElements();
-      const labels = labelsFrom(elements);
-      const blob = await exportToBlob({
-        elements: elements as never,
-        appState: {
-          ...api.getAppState(),
-          exportBackground: true,
-        } as never,
-        files: api.getFiles() as never,
-        mimeType: "image/png",
-      });
+      const { blob, labels } = await sceneBlob(api);
       await onSubmit(blob, labels);
     } finally {
       setBusy(false);
@@ -110,8 +152,21 @@ export function Board({ onSubmit, onWatch, watchEnabled = false }: Props) {
     return () => clearInterval(tick);
   }, [api, onWatch, watchEnabled]);
 
-  // Ctrl/Cmd+Left/Right trigger browser history back/forward and yank the
-  // Excalidraw viewport (looks like a sudden unzoom). Block only that default.
+  useEffect(() => {
+    if (!frameEnabled || !api || !onFrame) return;
+    const tick = window.setInterval(() => {
+      const scene = compactScene(api.getSceneElements());
+      if (!scene.elements.length) return;
+      const json = JSON.stringify(scene);
+      if (json === lastFrameJsonRef.current) return;
+      lastFrameJsonRef.current = json;
+      void sceneBlob(api)
+        .then(({ blob, labels }) => onFrameRef.current?.(blob, labels))
+        .catch(() => undefined);
+    }, FRAME_MS);
+    return () => clearInterval(tick);
+  }, [api, onFrame, frameEnabled]);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
@@ -135,7 +190,7 @@ export function Board({ onSubmit, onWatch, watchEnabled = false }: Props) {
           onClick={() => void submit()}
           disabled={busy || !api}
         >
-          {busy ? "Sending…" : "I’ve drawn — ask me"}
+          {busy ? "Sending…" : "I'm done, review my diagram"}
         </button>
         {watchEnabled && (
           <span className="muted board-watch-hint">Canvas watch on</span>

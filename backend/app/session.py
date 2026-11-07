@@ -8,6 +8,7 @@ from typing import Any
 
 from .config import get_settings
 from .prompts import build_system_prompt, live_phase_briefing, opening_line
+from .taxonomy import InterviewPlan, PlannedRound
 from .technique_bank import sample_session_topics
 
 
@@ -78,6 +79,19 @@ class InterviewSession:
     llm_topic_index: int = 0
     scorecard: dict[str, Any] | None = None
     created_at: float = field(default_factory=time.time)
+    plan: InterviewPlan | None = None
+    round_index: int = 0
+    persona: str = "friendly_senior"
+    resume_text: str = ""
+    jd_text: str = ""
+    use_plan_engine: bool = False
+
+    def current_round(self) -> PlannedRound | None:
+        if not self.plan or not self.plan.rounds:
+            return None
+        if self.round_index < 0 or self.round_index >= len(self.plan.rounds):
+            return None
+        return self.plan.rounds[self.round_index]
 
     def context(self) -> dict[str, Any]:
         return {
@@ -125,6 +139,8 @@ class InterviewSession:
         )
 
     def phase_budget_seconds(self) -> int:
+        if self.use_plan_engine and self.current_round():
+            return int(self.current_round().minutes) * 60
         s = get_settings()
         return {
             Phase.intro: s.intro_seconds,
@@ -144,6 +160,10 @@ class InterviewSession:
         return max(0, int(budget - elapsed))
 
     def system_prompt(self) -> str:
+        if self.use_plan_engine and self.plan and self.current_round():
+            from .round_prompts import full_system_prompt
+
+            return full_system_prompt(self.plan, self.current_round())
         return build_system_prompt(
             self.mode.value,
             self.phase.value,
@@ -152,11 +172,14 @@ class InterviewSession:
         )
 
     def append(self, role: str, content: str) -> None:
+        round_id = ""
+        if self.use_plan_engine and self.current_round():
+            round_id = self.current_round().id
         self.messages.append(
             ChatMessage(
                 role=role,
                 content=content,
-                phase=self.phase.value,
+                phase=round_id or self.phase.value,
             )
         )
 
@@ -169,6 +192,19 @@ class InterviewSession:
             }
             for t in self.llm_topics
         ]
+        round_ = self.current_round()
+        workspace = "none"
+        if round_:
+            from .taxonomy import load_taxonomy
+
+            meta = load_taxonomy()["round_types"].get(round_.round_type) or {}
+            workspace = str(meta.get("workspace") or "none")
+        show_design = self.phase in (Phase.design, Phase.design_teacher) or (
+            self.use_plan_engine and "whiteboard" in workspace
+        )
+        show_code = self.phase == Phase.debug or (
+            self.use_plan_engine and "code" in workspace
+        )
         return {
             "id": self.id,
             "mode": self.mode.value,
@@ -178,15 +214,18 @@ class InterviewSession:
             "seconds_remaining": self.seconds_remaining(),
             "phase_budget_seconds": self.phase_budget_seconds(),
             "code_panel": self.code_panel,
-            "design_prompt": (
-                ctx["design"]
-                if self.phase in (Phase.design, Phase.design_teacher)
-                else None
-            ),
-            "drill_title": self.drill_title if self.phase == Phase.debug else None,
-            "llm_topics": topics_public if self.phase == Phase.llm else topics_public,
+            "design_prompt": (ctx["design"] if show_design else None),
+            "drill_title": self.drill_title if show_code else None,
+            "llm_topics": topics_public,
             "llm_topic_index": self.llm_topic_index,
             "scorecard": self.scorecard,
+            "plan": self.plan.model_dump() if self.plan else None,
+            "round_index": self.round_index,
+            "current_round": round_.model_dump() if round_ else None,
+            "workspace": workspace if self.use_plan_engine else None,
+            "persona": self.persona,
+            "resume_text": self.resume_text if workspace == "resume" else None,
+            "use_plan_engine": self.use_plan_engine,
             "messages": [
                 {
                     "role": m.role,
@@ -281,8 +320,71 @@ class SessionStore:
     def get(self, session_id: str) -> InterviewSession | None:
         return self._sessions.get(session_id)
 
+    def put(self, session: InterviewSession) -> None:
+        self._sessions[session.id] = session
+
+    def create_from_plan(self, plan: InterviewPlan) -> InterviewSession:
+        difficulty = DebugDifficulty(plan.difficulty)
+        session = InterviewSession(
+            id=str(uuid.uuid4()),
+            mode=Mode(plan.mode),
+            run_style=RunStyle(plan.run_style),
+            debug_difficulty=difficulty,
+            phase=Phase.intro,
+            phase_started_at=time.time(),
+            plan=plan,
+            round_index=0,
+            persona=plan.persona,
+            resume_text=plan.resume_text,
+            jd_text=plan.jd_text,
+            use_plan_engine=True,
+        )
+        if plan.legacy:
+            session.use_plan_engine = False
+            line = opening_line(
+                Phase.intro.value, session.context(), session.run_style.value
+            )
+            session.append("assistant", line)
+        else:
+            round_ = session.current_round()
+            first_q = (
+                round_.questions[0].text
+                if round_ and round_.questions
+                else "Tell me about yourself."
+            )
+            label = round_.round_type if round_ else "intro"
+            session.append(
+                "assistant",
+                f"Hi — thanks for joining. We'll start with {label.replace('_', ' ')}. {first_q}",
+            )
+        self._sessions[session.id] = session
+        return session
+
     def advance_phase(self, session: InterviewSession) -> InterviewSession:
         if session.phase in (Phase.friend, Phase.design_teacher):
+            return session
+        if session.use_plan_engine and session.plan:
+            nxt = session.round_index + 1
+            if nxt >= len(session.plan.rounds):
+                session.phase = Phase.feedback
+                session.use_plan_engine = False
+                session.phase_started_at = time.time()
+                return session
+            session.round_index = nxt
+            session.phase_started_at = time.time()
+            session.code_panel = ""
+            session.design_prompt = {}
+            round_ = session.current_round()
+            if round_:
+                first_q = (
+                    round_.questions[0].text
+                    if round_.questions
+                    else f"Let's begin {_round_label(round_.round_type)}."
+                )
+                session.append(
+                    "assistant",
+                    f"Thanks. Let's move to {_round_label(round_.round_type)}. {first_q}",
+                )
             return session
         idx = PHASE_ORDER.index(session.phase)
         if idx >= len(PHASE_ORDER) - 1:
@@ -296,7 +398,6 @@ class SessionStore:
         if nxt == Phase.llm and not session.llm_topics:
             session.llm_topics = sample_session_topics()
             session.llm_topic_index = 0
-        # Openings that need async prep are appended by the API layer
         if nxt not in (Phase.debug, Phase.design, Phase.feedback, Phase.done):
             line = opening_line(nxt.value, session.context(), session.run_style.value)
             session.append("assistant", line)
@@ -333,16 +434,25 @@ class SessionStore:
             Phase.design_teacher,
         ):
             return False
-        # Practice intro: timer can hit zero (frontend beeps) but do not auto-skip
+        if session.use_plan_engine and session.run_style == RunStyle.practice:
+            return False
         if (
             session.phase == Phase.intro
             and session.run_style == RunStyle.practice
+            and not session.use_plan_engine
         ):
             return False
         if session.seconds_remaining() <= 0:
             self.advance_phase(session)
             return True
         return False
+
+
+def _round_label(round_type: str) -> str:
+    from .taxonomy import load_taxonomy
+
+    meta = load_taxonomy()["round_types"].get(round_type) or {}
+    return str(meta.get("label") or round_type.replace("_", " "))
 
 
 store = SessionStore()

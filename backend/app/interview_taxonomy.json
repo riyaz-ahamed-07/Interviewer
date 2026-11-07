@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "round_types": {
+    "oa": {"label": "Online assessment", "default_minutes": 60, "workspace": "code", "rubric": "coding", "family": "coding"},
+    "dsa": {"label": "DSA / live coding", "default_minutes": 45, "workspace": "code", "rubric": "coding", "family": "coding"},
+    "cs_fundamentals": {"label": "CS fundamentals", "default_minutes": 30, "workspace": "none", "rubric": "knowledge", "family": "knowledge"},
+    "resume_deep_dive": {"label": "Resume / project deep dive", "default_minutes": 25, "workspace": "resume", "rubric": "resume", "family": "resume"},
+    "lld": {"label": "Low-level design / OOD", "default_minutes": 45, "workspace": "code+whiteboard", "rubric": "lld", "family": "design"},
+    "machine_coding": {"label": "Machine coding", "default_minutes": 90, "workspace": "code", "rubric": "coding", "family": "coding"},
+    "hld": {"label": "System design (HLD)", "default_minutes": 45, "workspace": "whiteboard", "rubric": "system_design", "family": "design"},
+    "frontend_design": {"label": "Front-end system design", "default_minutes": 45, "workspace": "whiteboard", "rubric": "system_design", "family": "design"},
+    "ml_system_design": {"label": "ML system design", "default_minutes": 45, "workspace": "whiteboard", "rubric": "ml_system_design", "family": "design"},
+    "genai_system_design": {"label": "LLM / RAG / agent system design", "default_minutes": 45, "workspace": "whiteboard", "rubric": "ml_system_design", "family": "design"},
+    "ml_breadth": {"label": "ML breadth rapid fire", "default_minutes": 25, "workspace": "none", "rubric": "knowledge", "family": "knowledge"},
+    "ml_depth_math": {"label": "ML depth and maths", "default_minutes": 30, "workspace": "whiteboard", "rubric": "knowledge", "family": "knowledge"},
+    "ml_coding": {"label": "ML coding / PyTorch debug", "default_minutes": 30, "workspace": "code", "rubric": "coding", "family": "coding"},
+    "role_specific": {"label": "Role / JD specific", "default_minutes": 30, "workspace": "none", "rubric": "knowledge", "family": "knowledge"},
+    "take_home_review": {"label": "Take-home review", "default_minutes": 30, "workspace": "code", "rubric": "coding", "family": "coding"},
+    "pair_programming": {"label": "Pair programming", "default_minutes": 45, "workspace": "code", "rubric": "coding", "family": "coding"},
+    "behavioral": {"label": "Behavioural (STAR)", "default_minutes": 30, "workspace": "none", "rubric": "behavioral", "family": "behavioral"},
+    "hiring_manager": {"label": "Hiring manager", "default_minutes": 30, "workspace": "none", "rubric": "behavioral", "family": "behavioral"},
+    "hr": {"label": "HR / culture", "default_minutes": 15, "workspace": "none", "rubric": "hr", "family": "behavioral"},
+    "intro": {"label": "Intro / tell me about yourself", "default_minutes": 5, "workspace": "none", "rubric": "behavioral", "family": "behavioral"}
+  },
+  "company_types": {
+    "service_india": {
+      "label": "Indian service-based (TCS, Infosys, Wipro, Accenture, Cognizant)",
+      "default_rounds": ["cs_fundamentals", "resume_deep_dive", "dsa", "hr"],
+      "difficulty": "easy",
+      "style_notes": "One easy coding question, OOP pillars, DBMS/SQL joins, OS basics, final-year project. HR: relocation, shifts, service agreement. Follow a correct answer with why."
+    },
+    "product_india": {
+      "label": "Indian product company (Flipkart, Swiggy, Razorpay)",
+      "default_rounds": ["dsa", "dsa", "machine_coding", "hiring_manager"],
+      "difficulty": "medium",
+      "style_notes": "Machine coding: working in-memory app, modular OOP, then extensions."
+    },
+    "faang": {
+      "label": "FAANG / MAANG / top tech",
+      "default_rounds": ["dsa", "dsa", "hld", "behavioral"],
+      "difficulty": "hard",
+      "style_notes": "45-min rounds, about 35 min of problem solving. Amazon: Leadership Principles in every round."
+    },
+    "startup": {
+      "label": "Startup",
+      "default_rounds": ["resume_deep_dive", "pair_programming", "take_home_review", "hiring_manager"],
+      "difficulty": "medium",
+      "style_notes": "Practical building, ownership, speed, product sense. Less LeetCode."
+    },
+    "ai_startup": {
+      "label": "AI-first startup",
+      "default_rounds": ["resume_deep_dive", "role_specific", "genai_system_design", "pair_programming"],
+      "difficulty": "medium",
+      "style_notes": "RAG, agents, evals, latency and cost trade-offs, can you build it this week."
+    },
+    "custom": {
+      "label": "Custom",
+      "default_rounds": [],
+      "difficulty": "medium",
+      "style_notes": "User-defined round list."
+    }
+  },
+  "roles": {
+    "swe": {"label": "Software engineer", "add_rounds": ["dsa", "cs_fundamentals"], "topics": ["arrays", "hashing", "two_pointers", "trees", "graphs", "dp", "oop", "dbms", "os", "networks"]},
+    "backend": {"label": "Backend engineer", "add_rounds": ["role_specific", "hld"], "topics": ["rest_api_design", "sql_indexing", "transactions", "caching", "queues", "idempotency", "rate_limiting", "concurrency"]},
+    "fullstack": {"label": "Full-stack engineer", "add_rounds": ["role_specific", "pair_programming"], "topics": ["react_state", "rendering", "api_contract", "auth", "db_design", "deployment", "error_handling"]},
+    "python_dev": {"label": "Python developer", "add_rounds": ["role_specific"], "topics": ["gil", "generators", "decorators", "context_managers", "asyncio", "django_orm_n_plus_1", "fastapi_pydantic", "pytest"]},
+    "ml_engineer": {"label": "ML engineer", "add_rounds": ["ml_breadth", "ml_coding", "ml_system_design"], "topics": ["bias_variance", "regularization", "metrics", "backprop", "optimizers", "feature_engineering", "serving", "monitoring", "drift"]},
+    "ai_engineer": {"label": "AI engineer (LLM apps)", "add_rounds": ["genai_system_design", "role_specific"], "topics": ["rag_chunking", "hybrid_retrieval", "reranking", "rag_evals", "agents_tool_calling", "lora", "quantization", "kv_cache", "inference_serving", "guardrails"]}
+  },
+  "experience_levels": {
+    "intern": {"drop_rounds": ["hld"], "depth": "fundamentals plus one level of why"},
+    "fresher": {"drop_rounds": [], "depth": "fundamentals plus mechanism; light design only"},
+    "sde1": {"drop_rounds": [], "depth": "mechanism plus trade-offs"},
+    "sde2plus": {"drop_rounds": [], "depth": "trade-offs, scale, leadership"}
+  },
+  "personas": {
+    "friendly_senior": {"label": "Friendly senior engineer", "probe_depth": 1, "interrupts": false},
+    "neutral_faang": {"label": "Neutral FAANG-style", "probe_depth": 2, "interrupts": true},
+    "bar_raiser": {"label": "Strict Bar Raiser", "probe_depth": 3, "interrupts": true},
+    "startup_founder": {"label": "Skeptical startup founder", "probe_depth": 2, "interrupts": true},
+    "service_panel": {"label": "Indian service-company panel", "probe_depth": 1, "interrupts": false}
+  },
+  "rubrics": {
+    "coding": ["communication", "problem_solving", "technical_competency", "testing"],
+    "system_design": ["requirements", "core_entities_and_api", "high_level_design", "deep_dives", "tradeoffs", "communication"],
+    "ml_system_design": ["problem_framing", "data_and_labels", "modeling", "metrics", "serving_and_scale", "iteration_and_failure", "communication"],
+    "lld": ["entities_and_responsibilities", "extensibility", "code_quality", "edge_cases", "communication"],
+    "knowledge": ["correctness", "depth_of_why", "tradeoffs", "clarity_and_conciseness"],
+    "resume": ["ownership", "technical_depth", "decisions_and_tradeoffs", "impact_with_numbers", "honesty_about_limits"],
+    "behavioral": ["star_structure", "ownership_i_statements", "measurable_result", "reflection", "values_alignment", "conciseness"],
+    "hr": ["clarity", "confidence", "motivation", "flexibility", "red_flags"]
+  },
+  "score_bands": ["strong_no_hire", "leaning_no_hire", "leaning_hire", "strong_hire"]
+}

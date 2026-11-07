@@ -27,9 +27,12 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
   const wsRef = useRef<WebSocket | null>(null);
   const captureCtxRef = useRef<AudioContext | null>(null);
   const playCtxRef = useRef<AudioContext | null>(null);
+  const outputGainRef = useRef<GainNode | null>(null);
   const playTimeRef = useRef(0);
   const sourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const [playContext, setPlayContext] = useState<AudioContext | null>(null);
+  const [outputGain, setOutputGain] = useState<GainNode | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const micEnabledRef = useRef(true);
   const allowPlaybackRef = useRef(true);
@@ -54,6 +57,19 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
   const ensurePlayCtx = useCallback(async () => {
     if (!playCtxRef.current || playCtxRef.current.state === "closed") {
       playCtxRef.current = new AudioContext({ sampleRate: 24000 });
+      const gain = playCtxRef.current.createGain();
+      gain.gain.value = 1;
+      gain.connect(playCtxRef.current.destination);
+      outputGainRef.current = gain;
+      setPlayContext(playCtxRef.current);
+      setOutputGain(gain);
+    }
+    if (!outputGainRef.current && playCtxRef.current) {
+      const gain = playCtxRef.current.createGain();
+      gain.gain.value = 1;
+      gain.connect(playCtxRef.current.destination);
+      outputGainRef.current = gain;
+      setOutputGain(gain);
     }
     const ctx = playCtxRef.current;
     if (ctx.state === "suspended") {
@@ -63,6 +79,7 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
         /* browser may block until next gesture */
       }
     }
+    setPlayContext(ctx);
     return ctx;
   }, []);
 
@@ -80,7 +97,9 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
       buffer.copyToChannel(float32, 0);
       const src = ctx.createBufferSource();
       src.buffer = buffer;
-      src.connect(ctx.destination);
+      const gain = outputGainRef.current;
+      if (gain) src.connect(gain);
+      else src.connect(ctx.destination);
       const now = ctx.currentTime;
       const startAt = Math.max(now, playTimeRef.current);
       src.start(startAt);
@@ -104,6 +123,9 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
     void playCtxRef.current?.close();
     captureCtxRef.current = null;
     playCtxRef.current = null;
+    outputGainRef.current = null;
+    setPlayContext(null);
+    setOutputGain(null);
     playTimeRef.current = 0;
   }, [stopPlayback]);
 
@@ -320,6 +342,9 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
     // Close playback ctx too — a fresh one is unlocked on resume click
     void playCtxRef.current?.close();
     playCtxRef.current = null;
+    outputGainRef.current = null;
+    setPlayContext(null);
+    setOutputGain(null);
     playTimeRef.current = 0;
     setStatus("paused");
     setUserPartial("");
@@ -383,6 +408,8 @@ export function useLiveVoice(onTurnComplete?: TurnHandler) {
     userPartial,
     assistantPartial,
     paused,
+    playContext,
+    outputGain,
     connect,
     disconnect,
     pause,

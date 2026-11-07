@@ -7,7 +7,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = _BACKEND_ROOT.parent
+_ENV_FILE = _BACKEND_ROOT / ".env"
+_ENV_LOCAL = _REPO_ROOT / ".env.local"
+load_dotenv(_ENV_LOCAL, override=False)
 load_dotenv(_ENV_FILE, override=False)
 
 
@@ -26,10 +30,14 @@ def _csv_keys(raw: str) -> list[str]:
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(_ENV_FILE),
+        env_file=(str(_ENV_LOCAL), str(_ENV_FILE)),
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    database_url: str = ""
+    database_url_unpooled: str = ""
+    neon_branch: str = ""
 
     # Optional legacy CSV forms (still supported)
     gemini_api_keys: str = ""
