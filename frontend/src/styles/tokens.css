@@ -1,0 +1,59 @@
+:root {
+  --bg-pastel: #f4f0ff;
+  --bg-pastel-2: #efe8ff;
+  --purple-600: #6d28d9;
+  --purple-500: #7c3aed;
+  --purple-400: #a78bfa;
+  --purple-300: #c4b5fd;
+  --purple-200: #ddd6fe;
+  --lavender: #ede9fe;
+  --lavender-deep: #c7d2fe;
+  --card: #ffffff;
+  --ink: #2e1065;
+  --ink-soft: #4c1d95;
+  --muted: #7c6f9a;
+  --teal: #0d9488;
+  --teal-soft: #ccfbf1;
+  --success: #059669;
+  --warn: #d97706;
+  --radius-card: 24px;
+  --radius-pill: 999px;
+  --shadow-soft: 0 10px 30px rgba(109, 40, 217, 0.12);
+  --shadow-card: 0 8px 24px rgba(46, 16, 101, 0.08);
+  --font-display: "Nunito", "Kalam", system-ui, sans-serif;
+  --font-body: "Plus Jakarta Sans", "Nunito", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", Consolas, monospace;
+  --hand: var(--font-display);
+  --title: var(--font-display);
+  --pen: "Caveat", cursive;
+  --mono: var(--font-mono);
+  --paper: var(--bg-pastel);
+  --ink2: var(--ink);
+  --blue: var(--purple-500);
+  --red: #db2777;
+  --green: var(--success);
+  --orange: var(--warn);
+  --faint: var(--muted);
+  --hl: var(--purple-200);
+  --line: rgba(109, 40, 217, 0.35);
+  --line-soft: rgba(109, 40, 217, 0.16);
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(196, 181, 253, 0.45), transparent 42%),
+    radial-gradient(circle at 88% 8%, rgba(167, 139, 250, 0.28), transparent 40%),
+    var(--bg-pastel);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}

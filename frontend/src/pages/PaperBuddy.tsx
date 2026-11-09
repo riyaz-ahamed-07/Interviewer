@@ -44,7 +44,17 @@ function highlightGlossary(text: string, glossary: Record<string, string>) {
     }
     if (hit.i > 0) out.push({ t: rest.slice(0, hit.i), g: false });
     const raw = rest.slice(hit.i, hit.i + hit.term.length);
-    out.push({ t: raw, g: true, def: glossary[hit.term] ?? glossary[Object.keys(glossary).find((k) => k.toLowerCase() === hit!.term.toLowerCase()) || ""] });
+    out.push({
+      t: raw,
+      g: true,
+      def:
+        glossary[hit.term] ??
+        glossary[
+          Object.keys(glossary).find(
+            (k) => k.toLowerCase() === hit!.term.toLowerCase(),
+          ) || ""
+        ],
+    });
     rest = rest.slice(hit.i + hit.term.length);
   }
   return out;
@@ -61,7 +71,9 @@ export default function PaperBuddy() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("Loading…");
   const [explain, setExplain] = useState<ExplainBox | null>(null);
-  const [refPop, setRefPop] = useState<{ title: string; body: string } | null>(null);
+  const [refPop, setRefPop] = useState<{ title: string; body: string } | null>(
+    null,
+  );
   const [oneLiner, setOneLiner] = useState("");
   const [quizIdx, setQuizIdx] = useState(0);
   const [quizReveal, setQuizReveal] = useState(false);
@@ -143,7 +155,11 @@ export default function PaperBuddy() {
     if (!sel || sel.length < 2) return;
     setBusy(true);
     try {
-      const kind = /[=\\^_{}]/.test(sel) ? "equation" : sel.split(/\s+/).length > 8 ? "sentence" : "term";
+      const kind = /[=\\^_{}]/.test(sel)
+        ? "equation"
+        : sel.split(/\s+/).length > 8
+          ? "sentence"
+          : "term";
       const data = await explainSelection(paperId, {
         selection: sel,
         kind,
@@ -221,7 +237,7 @@ export default function PaperBuddy() {
 
   if (!paper || !map || !session) {
     return (
-      <div className="shell lobby">
+      <div className="shell lobby habit-page">
         <p className="eyebrow">
           <Link to="/buddies/paper">Library</Link>
         </p>
@@ -235,7 +251,7 @@ export default function PaperBuddy() {
   const quizCard = cards[quizIdx % Math.max(cards.length, 1)] ?? null;
 
   return (
-    <div className="paper-buddy">
+    <div className="paper-buddy habit-page">
       <header className="paper-buddy-top">
         <div>
           <p className="eyebrow">
@@ -245,7 +261,9 @@ export default function PaperBuddy() {
           {paper.arxiv_id ? (
             <p className="lede">
               arXiv {paper.arxiv_id}
-              {paper.authors?.length ? ` · ${paper.authors.slice(0, 3).join(", ")}` : ""}
+              {paper.authors?.length
+                ? ` · ${paper.authors.slice(0, 3).join(", ")}`
+                : ""}
             </p>
           ) : null}
         </div>
@@ -268,7 +286,11 @@ export default function PaperBuddy() {
       <div className="paper-panes">
         <aside className="paper-pane left" ref={paperPane}>
           <div className="pane-toolbar">
-            <button type="button" className="cta ghost" onClick={() => void onExplainSelection()}>
+            <button
+              type="button"
+              className="cta ghost"
+              onClick={() => void onExplainSelection()}
+            >
               Explain selection
             </button>
           </div>
@@ -293,12 +315,15 @@ export default function PaperBuddy() {
               )}
             </p>
             {paper.sections.map((s) => {
-              const hot = conceptSectionIds.size === 0 || conceptSectionIds.has(s.id);
+              const hot =
+                conceptSectionIds.size === 0 || conceptSectionIds.has(s.id);
               return (
                 <section
                   key={s.id}
                   id={`sec-${s.id}`}
-                  className={hot && conceptSectionIds.size ? "sec-hot" : undefined}
+                  className={
+                    hot && conceptSectionIds.size ? "sec-hot" : undefined
+                  }
                 >
                   <h2>{s.heading}</h2>
                   {s.paragraphs.map((para, pi) => (
@@ -356,7 +381,11 @@ export default function PaperBuddy() {
                 <ol className="ref-list">
                   {paper.references.slice(0, 40).map((r, i) => (
                     <li key={i}>
-                      <button type="button" className="linkish" onClick={() => void openRef(i)}>
+                      <button
+                        type="button"
+                        className="linkish"
+                        onClick={() => void openRef(i)}
+                      >
                         {r.title || r.raw.slice(0, 120)}
                       </button>
                     </li>
@@ -386,10 +415,18 @@ export default function PaperBuddy() {
               >
                 Back
               </button>
-              <button type="button" disabled={busy} onClick={() => void advance("got_it")}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void advance("got_it")}
+              >
                 I got it, check me
               </button>
-              <button type="button" disabled={busy} onClick={() => void advance("deeper")}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void advance("deeper")}
+              >
                 Go deeper
               </button>
               <button
@@ -402,11 +439,17 @@ export default function PaperBuddy() {
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => void send("Show a minimal code sketch for this concept.")}
+                onClick={() =>
+                  void send("Show a minimal code sketch for this concept.")
+                }
               >
                 Show code
               </button>
-              <button type="button" disabled={busy} onClick={() => void advance("skip")}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void advance("skip")}
+              >
                 Skip anyway
               </button>
             </div>
@@ -438,7 +481,11 @@ export default function PaperBuddy() {
               placeholder="Ask Dr. Delta…"
               disabled={busy}
             />
-            <button type="submit" className="cta" disabled={busy || !input.trim()}>
+            <button
+              type="submit"
+              className="cta"
+              disabled={busy || !input.trim()}
+            >
               Send
             </button>
           </form>
@@ -528,7 +575,11 @@ export default function PaperBuddy() {
             {tab === "notes" ? (
               <>
                 <pre className="notes-preview">{notesMd}</pre>
-                <button type="button" className="cta ghost" onClick={exportNotes}>
+                <button
+                  type="button"
+                  className="cta ghost"
+                  onClick={exportNotes}
+                >
                   Export Markdown
                 </button>
               </>
@@ -542,7 +593,9 @@ export default function PaperBuddy() {
                     {quizIdx + 1}/{cards.length}
                   </p>
                   <p>{quizCard?.question}</p>
-                  {quizReveal ? <p className="quiz-answer">{quizCard?.answer}</p> : null}
+                  {quizReveal ? (
+                    <p className="quiz-answer">{quizCard?.answer}</p>
+                  ) : null}
                   <div className="quiz-grades">
                     <button type="button" onClick={() => setQuizReveal(true)}>
                       Reveal
@@ -566,7 +619,11 @@ export default function PaperBuddy() {
 
       {explain ? (
         <div className="paper-pop" role="dialog">
-          <button type="button" className="pop-close" onClick={() => setExplain(null)}>
+          <button
+            type="button"
+            className="pop-close"
+            onClick={() => setExplain(null)}
+          >
             ×
           </button>
           <h3>Explain</h3>
@@ -577,7 +634,11 @@ export default function PaperBuddy() {
       ) : null}
       {refPop ? (
         <div className="paper-pop" role="dialog">
-          <button type="button" className="pop-close" onClick={() => setRefPop(null)}>
+          <button
+            type="button"
+            className="pop-close"
+            onClick={() => setRefPop(null)}
+          >
             ×
           </button>
           <h3>{refPop.title}</h3>

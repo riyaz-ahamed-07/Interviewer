@@ -64,8 +64,9 @@ export default function PaperLibrary() {
   const active = quiz ?? due[0] ?? null;
 
   return (
-    <div className="shell lobby paper-lib">
-      <header>
+    <div className="shell lobby paper-lib habit-page">
+      <header className="habit-hero">
+        <div>
         <p className="eyebrow">
           <Link to="/">Home</Link> · Dr. Delta
         </p>
@@ -75,6 +76,7 @@ export default function PaperLibrary() {
           parent, prerequisites, and a concept-by-concept lesson plan.
         </p>
         {status ? <p className="status">{status}</p> : null}
+        </div>
       </header>
 
       <section className="paper-ingest">

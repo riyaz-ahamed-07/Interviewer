@@ -23,15 +23,17 @@ export default function History() {
   }, []);
 
   return (
-    <div className="shell lobby">
-      <header>
-        <p className="eyebrow">
-          <Link to="/">Home</Link>
-        </p>
-        <h1>History</h1>
+    <div className="shell lobby habit-page">
+      <header className="habit-hero">
+        <div>
+          <p className="eyebrow">
+            <Link to="/">Home</Link>
+          </p>
+          <h1>History</h1>
+        </div>
       </header>
       {error ? <p className="status">{error}</p> : null}
-      <ul className="recent-list">
+      <ul className="recent-list soft-card" style={{ padding: "0.75rem 1rem" }}>
         {rows.map((s) => (
           <li key={s.id}>
             <Link to={`/interview/${s.id}`}>

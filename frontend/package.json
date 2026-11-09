@@ -12,6 +12,7 @@
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
     "katex": "^0.19.1",
+    "lucide-react": "^1.70.0",
     "mermaid": "^12.2.0",
     "prism-react-renderer": "^2.4.1",
     "react": "^19.3.1",

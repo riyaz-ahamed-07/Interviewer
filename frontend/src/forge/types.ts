@@ -26,7 +26,7 @@ export type DayLog = {
 };
 
 export type ForgeStore = {
-  version: 1;
+  version: 1 | 2;
   startedAt: string;
   progress: ProgressMap;
   xp: number;
@@ -35,6 +35,7 @@ export type ForgeStore = {
   lastActiveDate: string | null;
   freezeLeft: number;
   days: Record<string, DayLog>;
+  weekChecks: Record<string, boolean>;
   paperWeek: {
     weekKey: string;
     title: string;

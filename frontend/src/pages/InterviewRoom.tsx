@@ -577,7 +577,7 @@ export default function InterviewRoom() {
   const showResume = workspace === "resume" && Boolean(session.resume_text);
 
   return (
-    <div className="shell interview call-room">
+    <div className="shell interview call-room habit-chrome">
       <header className="topbar">
         <div className="topbar-left">
           <strong>{roundLabel}</strong>

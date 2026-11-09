@@ -42,7 +42,7 @@ export function weekKey(d = new Date()): string {
 
 function emptyStore(): ForgeStore {
   return {
-    version: 1,
+    version: 2,
     startedAt: new Date().toISOString(),
     progress: {},
     xp: 0,
@@ -51,6 +51,7 @@ function emptyStore(): ForgeStore {
     lastActiveDate: null,
     freezeLeft: 2,
     days: {},
+    weekChecks: {},
     paperWeek: null,
     focusPillarId: "math",
     levelCelebrated: 1,
@@ -62,11 +63,47 @@ export function loadStore(): ForgeStore {
     const raw = localStorage.getItem(KEY);
     if (!raw) return emptyStore();
     const parsed = JSON.parse(raw) as ForgeStore;
-    if (parsed.version !== 1) return emptyStore();
-    return { ...emptyStore(), ...parsed };
+    if (parsed.version !== 1 && parsed.version !== 2) return emptyStore();
+    const merged: ForgeStore = {
+      ...emptyStore(),
+      ...parsed,
+      weekChecks: parsed.weekChecks ?? {},
+      version: 2,
+    };
+    if (parsed.version === 1) {
+      merged.xp = 0;
+      merged.streak = 0;
+      merged.bestStreak = 0;
+      merged.lastActiveDate = null;
+      merged.freezeLeft = 2;
+      merged.days = {};
+      merged.weekChecks = {};
+    }
+    return merged;
   } catch {
     return emptyStore();
   }
+}
+
+export function toggleWeekTask(
+  store: ForgeStore,
+  dateKey: string,
+  taskId: string,
+): ForgeStore {
+  const key = `${dateKey}::${taskId}`;
+  const next = !(store.weekChecks[key] ?? false);
+  let xp = store.xp;
+  if (next) xp += 8;
+  else xp = Math.max(0, xp - 8);
+  const updated = touchStreak(
+    {
+      ...store,
+      weekChecks: { ...store.weekChecks, [key]: next },
+      xp,
+    },
+    dateKey,
+  );
+  return updated;
 }
 
 export function saveStore(store: ForgeStore) {
@@ -233,7 +270,7 @@ const WEEKDAY_THEMES: Record<
   },
 };
 
-function unfinishedLeaves(
+export function unfinishedFromPillars(
   progress: ProgressMap,
   pillarIds: string[],
 ): string[] {
@@ -254,6 +291,25 @@ function unfinishedLeaves(
   return ids;
 }
 
+export function unfinishedUnder(
+  progress: ProgressMap,
+  nodeId: string,
+): string[] {
+  const hit = findNode(nodeId);
+  if (!hit) return [];
+  const ids: string[] = [];
+  const walk = (node: (typeof hit)["node"]) => {
+    if (!node.children?.length) {
+      const s = progress[node.id] ?? "todo";
+      if (s === "todo" || s === "learning") ids.push(node.id);
+    } else {
+      for (const c of node.children) walk(c);
+    }
+  };
+  walk(hit.node);
+  return ids;
+}
+
 export function buildDailyQuests(
   store: ForgeStore,
   date = new Date(),
@@ -264,7 +320,7 @@ export function buildDailyQuests(
   const focus = store.focusPillarId
     ? [store.focusPillarId, ...theme.pillarIds]
     : theme.pillarIds;
-  const pool = unfinishedLeaves(store.progress, focus);
+  const pool = unfinishedFromPillars(store.progress, focus);
   const learningFirst = pool.sort((a, b) => {
     const sa = store.progress[a] === "learning" ? 0 : 1;
     const sb = store.progress[b] === "learning" ? 0 : 1;

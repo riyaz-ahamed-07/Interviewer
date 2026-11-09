@@ -1,4 +1,13 @@
 import type { Pillar, ForgeNode } from "./types";
+import {
+  AGENTS_ROOTS,
+  CN_VIDEO_ROOT,
+  DBMS_VIDEO_ROOT,
+  DSA_A2Z_ROOTS,
+  OS_VIDEO_ROOT,
+  SYSDESIGN_ROOTS,
+  TRENTORCH_ROOTS,
+} from "./curriculumPatches";
 
 const n = (
   id: string,
@@ -425,48 +434,12 @@ export const PILLARS: Pillar[] = [
   {
     id: "corecs",
     title: "Core CS",
-    blurb: "OS · Networks · DBMS — Prime + interview bedrock.",
+    blurb: "OS · CN · DBMS in your video order — concepts first.",
     accent: "#00838f",
     roots: [
-      n(
-        "cs.os",
-        "Operating systems",
-        [
-          n("cs.os.process", "Process vs thread"),
-          n("cs.os.sched", "Scheduling"),
-          n("cs.os.sync", "Mutex / semaphore / deadlock"),
-          n("cs.os.mem", "Virtual memory / paging"),
-          n("cs.os.fs", "File systems"),
-          n("cs.os.io", "I/O & interrupts"),
-        ],
-        { phase: 2 },
-      ),
-      n(
-        "cs.cn",
-        "Computer networks",
-        [
-          n("cs.cn.osi", "OSI / TCP-IP layers"),
-          n("cs.cn.tcp", "TCP vs UDP"),
-          n("cs.cn.http", "HTTP / HTTPS"),
-          n("cs.cn.dns", "DNS"),
-          n("cs.cn.tls", "TLS basics"),
-          n("cs.cn.load", "Load balancing idea"),
-        ],
-        { phase: 2 },
-      ),
-      n(
-        "cs.dbms",
-        "DBMS",
-        [
-          n("cs.dbms.er", "ER modeling"),
-          n("cs.dbms.norm", "Normalization"),
-          n("cs.dbms.acid", "ACID"),
-          n("cs.dbms.txn", "Transactions / isolation"),
-          n("cs.dbms.index", "Indexes (B-tree / hash)"),
-          n("cs.dbms.query", "Query planning intuition"),
-        ],
-        { phase: 2 },
-      ),
+      OS_VIDEO_ROOT,
+      CN_VIDEO_ROOT,
+      DBMS_VIDEO_ROOT,
       n(
         "cs.oop",
         "OOP & design basics",
@@ -480,67 +453,10 @@ export const PILLARS: Pillar[] = [
   },
   {
     id: "dsa",
-    title: "DSA & Problem Solving",
-    blurb: "Patterns you can invent under pressure — not mugged solutions.",
+    title: "DSA · Striver A2Z",
+    blurb: "takeUforward A2Z sheet order — theory step then LC practice.",
     accent: "#ef6c00",
-    roots: [
-      n(
-        "dsa.comp",
-        "Complexity",
-        [
-          n("dsa.comp.bigO", "Big-O / Theta / Omega"),
-          n("dsa.comp.space", "Space tradeoffs"),
-          n("dsa.comp.amort", "Amortized analysis skim"),
-        ],
-        { phase: 1 },
-      ),
-      n(
-        "dsa.struct",
-        "Data structures",
-        [
-          n("dsa.struct.array", "Arrays / strings"),
-          n("dsa.struct.hash", "Hash maps / sets"),
-          n("dsa.struct.ll", "Linked lists"),
-          n("dsa.struct.stack", "Stack / queue / deque"),
-          n("dsa.struct.heap", "Heap / priority queue"),
-          n("dsa.struct.tree", "Trees / BST / Traversals"),
-          n("dsa.struct.trie", "Trie"),
-          n("dsa.struct.graph", "Graphs (adj list/matrix)"),
-          n("dsa.struct.uf", "Union-Find"),
-        ],
-        { phase: 1 },
-      ),
-      n(
-        "dsa.patterns",
-        "Patterns",
-        [
-          n("dsa.patterns.two", "Two pointers"),
-          n("dsa.patterns.slide", "Sliding window"),
-          n("dsa.patterns.prefix", "Prefix sums"),
-          n("dsa.patterns.binary", "Binary search variants"),
-          n("dsa.patterns.dfs", "DFS / BFS"),
-          n("dsa.patterns.topo", "Topological sort"),
-          n("dsa.patterns.dij", "Dijkstra / shortest path"),
-          n("dsa.patterns.dp1", "1D DP"),
-          n("dsa.patterns.dp2", "2D DP / knapsack"),
-          n("dsa.patterns.greedy", "Greedy proofs intuition"),
-          n("dsa.patterns.backtrack", "Backtracking"),
-          n("dsa.patterns.bit", "Bit manipulation"),
-        ],
-        { phase: 1 },
-      ),
-      n(
-        "dsa.practice",
-        "Practice cadence",
-        [
-          n("dsa.practice.easy", "Easy consistency"),
-          n("dsa.practice.med", "Medium pattern coverage"),
-          n("dsa.practice.hard", "Selective hard"),
-          n("dsa.practice.explain", "Explain out loud"),
-        ],
-        { phase: 5 },
-      ),
-    ],
+    roots: DSA_A2Z_ROOTS,
   },
   {
     id: "sql",
@@ -671,39 +587,24 @@ export const PILLARS: Pillar[] = [
   {
     id: "sysdesign",
     title: "System Design",
-    blurb: "Ask the right questions. Draw the right boxes.",
+    blurb: "roadmap.sh outline + ML systems — practice one design / day slot.",
     accent: "#283593",
-    roots: [
-      n(
-        "sd.gen",
-        "General systems",
-        [
-          n("sd.gen.req", "Requirements & clarifications"),
-          n("sd.gen.cap", "Capacity estimation"),
-          n("sd.gen.api", "API design"),
-          n("sd.gen.storage", "SQL vs NoSQL choice"),
-          n("sd.gen.cache", "Caching"),
-          n("sd.gen.queue", "Queues / async"),
-          n("sd.gen.consist", "Consistency models"),
-          n("sd.gen.scale", "Horizontal scaling"),
-          n("sd.gen.fail", "Failure modes"),
-        ],
-        { phase: 5 },
-      ),
-      n(
-        "sd.ml",
-        "ML system design",
-        [
-          n("sd.ml.pipeline", "Training vs serving split"),
-          n("sd.ml.feature", "Feature store idea"),
-          n("sd.ml.online", "Online vs batch inference"),
-          n("sd.ml.monitor", "Drift / monitoring"),
-          n("sd.ml.ab", "A/B & shadow deploy"),
-          n("sd.ml.cost", "Cost / latency budgets"),
-        ],
-        { phase: 5 },
-      ),
-    ],
+    roots: SYSDESIGN_ROOTS,
+  },
+  {
+    id: "trentorch",
+    title: "TrenTorch practice",
+    blurb: "https://trentorch.com — 12 modules, implement ML from scratch.",
+    accent: "#7c3aed",
+    roots: TRENTORCH_ROOTS,
+  },
+  {
+    id: "agents",
+    title: "Agentic AI",
+    blurb:
+      "Krish Naik agentic course + TrenTorch Agentic & GenAI — after Transformers.",
+    accent: "#db2777",
+    roots: AGENTS_ROOTS,
   },
   {
     id: "mlops",

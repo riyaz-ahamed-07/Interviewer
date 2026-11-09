@@ -181,7 +181,7 @@ export default function Setup() {
   };
 
   return (
-    <div className="shell lobby setup">
+    <div className="shell lobby setup habit-page">
       <header>
         <p className="eyebrow">
           <Link to="/">Home</Link> · Setup

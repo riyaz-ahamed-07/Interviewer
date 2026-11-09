@@ -37,7 +37,7 @@
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
-  padding: 0.55rem 1.1rem;
+  padding: 0.55rem 12px;
   background: rgba(253, 252, 248, 0.92);
   border-bottom: 1.5px solid var(--line-soft);
   backdrop-filter: blur(8px);
@@ -74,14 +74,113 @@
 .top-nav-metrics {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.45rem 0.75rem;
   font-family: var(--mono);
   font-size: 0.78rem;
   color: var(--blue);
 }
 
+.top-nav-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--ink2);
+  font-weight: 600;
+}
+
+.top-nav-done svg {
+  color: var(--blue);
+  flex-shrink: 0;
+}
+
+.top-nav-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  border: 1.5px solid rgba(29, 43, 79, 0.12);
+  background: rgba(255, 255, 255, 0.75);
+  font-weight: 700;
+  color: var(--ink2);
+}
+
+.top-nav-pill em {
+  font-style: normal;
+  font-weight: 600;
+  font-size: 0.68rem;
+  color: var(--faint);
+}
+
+.top-nav-pill.streak.on {
+  border-color: rgba(255, 99, 51, 0.35);
+  background: #fff4f0;
+  color: #ff6333;
+}
+
+.top-nav-pill.streak.off {
+  color: #aab0bb;
+}
+
+.top-nav-pill.xp {
+  color: var(--blue);
+}
+
+.landing-forge-first {
+  justify-content: flex-start;
+  padding: 8px 0 72px;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+}
+
+.landing-viewport {
+  min-height: calc(100dvh - 56px);
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  width: 100%;
+}
+
+.landing-viewport .forge-embed {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  min-height: 0;
+  width: 100%;
+}
+
+.landing-viewport .forge-panel,
+.landing-viewport .forge-embed.is-compact .forge-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 10px 0.5rem;
+}
+
+.landing-viewport .forge-week-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.landing-viewport .forge-week-bento {
+  flex: 1;
+  min-height: 0;
+}
+
 .landing-hero {
-  margin-bottom: 0.5rem;
+  margin: 0.5rem 0 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--line-soft);
 }
 
 .forge-embed {
@@ -96,6 +195,73 @@
 
 .forge-embed .forge-hero h2 span {
   color: var(--red);
+}
+
+.forge-embed.is-compact .forge-hero {
+  margin-bottom: 0.35rem;
+}
+
+.forge-embed.is-compact .forge-hero-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.forge-embed.is-compact .eyebrow {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.forge-embed.is-compact .forge-hud {
+  margin: 0.45rem 0 0.35rem;
+  max-width: none;
+}
+
+.forge-embed.is-compact .forge-stat {
+  padding: 0.4rem 0.5rem;
+}
+
+.forge-embed.is-compact .forge-stat strong {
+  font-size: 1.15rem;
+}
+
+.forge-embed.is-compact .forge-tabs {
+  margin: 0.45rem 0 0.55rem;
+}
+
+.forge-embed.is-compact .forge-panel {
+  padding: 0.75rem 0.85rem 1rem;
+}
+
+.forge-embed.is-compact .forge-quests {
+  margin: 0.45rem 0;
+}
+
+.forge-embed.is-compact .forge-quest {
+  padding: 0.55rem 0.65rem;
+}
+
+@media (max-width: 640px) {
+  .landing-forge-first.shell {
+    padding: 4px 0 64px;
+  }
+
+  .landing-viewport .forge-panel {
+    padding: 0 6px 0.35rem;
+  }
+
+  .top-nav {
+    padding: 0.45rem 8px;
+  }
+
+  .landing-viewport {
+    min-height: calc(100dvh - 56px);
+  }
+
+  .forge-embed.is-compact .forge-quest p {
+    display: none;
+  }
 }
 
 html,
@@ -1070,6 +1236,17 @@ textarea {
   margin-bottom: 1rem;
   font-size: 0.95rem;
 }
+.health-banner.soft {
+  background: color-mix(in srgb, var(--orange) 22%, #fff8f0);
+  color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--orange) 40%, transparent);
+}
+.landing-quick {
+  margin-top: 0.25rem;
+}
+.landing-quick .buddy-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
 .landing .cta-row,
 .setup .cta-row {
   display: flex;
@@ -1636,10 +1813,66 @@ textarea {
   gap: 0.75rem;
   flex-wrap: wrap;
 }
+
+.forge-week-nav {
+  align-items: center;
+}
+
+.forge-week-nav-main {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.forge-week-nav-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.forge-week-nav-label h3 {
+  margin: 0;
+  line-height: 1.15;
+}
+
+.forge-week-arrow {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--line-soft);
+  background: #fff;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink2);
+  flex-shrink: 0;
+}
+
+.forge-week-arrow:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.forge-week-arrow:not(:disabled):hover {
+  border-color: var(--ink2);
+}
+
+.forge-week-jump {
+  font-size: 0.85rem;
+}
+
 .forge-hours {
   font-family: var(--pen);
   color: var(--orange);
   font-size: 1.05rem;
+}
+
+.forge-week-nav .forge-hours {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--faint);
 }
 .forge-mini-row {
   display: flex;
@@ -1794,10 +2027,651 @@ textarea {
   padding: 0.7rem 0.85rem;
   background: #fff;
 }
+.forge-quest strong,
+.day-todo-card strong,
+.day-todo-text {
+  background: none;
+}
 .forge-quest p {
   margin: 0.15rem 0 0;
   font-size: 0.85rem;
   color: var(--blue);
+}
+
+.forge-hero-metrics {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.35rem 0 0.15rem;
+  max-width: 420px;
+}
+
+.forge-mini-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.forge-mini-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  border: 1.5px solid rgba(29, 43, 79, 0.12);
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.forge-mini-pill.streak.on {
+  border-color: rgba(255, 99, 51, 0.35);
+  background: #fff4f0;
+}
+
+.forge-mini-pill.streak.on .forge-mini-ico,
+.forge-mini-pill.streak.on .forge-mini-num {
+  color: #ff6333;
+}
+
+.forge-mini-pill.streak.off .forge-mini-ico,
+.forge-mini-pill.streak.off .forge-mini-num {
+  color: #aab0bb;
+}
+
+.forge-mini-pill.xp .forge-mini-ico {
+  color: #1f4fa3;
+}
+
+.forge-mini-num {
+  font-weight: 700;
+  color: var(--ink2);
+}
+
+.forge-mini-unit {
+  color: var(--faint);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.forge-level-chip {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--faint);
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+}
+
+.forge-week-panel {
+  overflow: visible;
+}
+
+.forge-week-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.55rem;
+}
+
+.forge-kind-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem 0.75rem;
+  margin-left: auto;
+}
+
+.forge-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.forge-legend-item i {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 999px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.forge-legend-item.kind-leetcode i {
+  background: #3b82f6;
+}
+.forge-legend-item.kind-concept i {
+  background: #0f766e;
+}
+.forge-legend-item.kind-sql i {
+  background: #64748b;
+}
+.forge-legend-item.kind-ml i {
+  background: #7c3aed;
+}
+.forge-legend-item.kind-paper i {
+  background: #ea580c;
+}
+.forge-legend-item.kind-module i {
+  background: #aab0bb;
+}
+
+.forge-week-bento {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  padding: 0;
+  min-height: 0;
+  width: 100%;
+}
+
+.forge-week-bento > * {
+  grid-column: span 3;
+  min-width: 0;
+}
+
+.forge-week-bento > :nth-child(n + 5) {
+  grid-column: span 4;
+}
+
+.day-todo-card {
+  border-radius: 16px;
+  border: 1.5px solid rgba(29, 43, 79, 0.1);
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(29, 43, 79, 0.05);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.day-todo-card.is-today {
+  border-color: rgba(31, 79, 163, 0.35);
+}
+.day-todo-card.is-done {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+.day-todo-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.7rem;
+  background: linear-gradient(180deg, #fde047 0%, #fef08a 100%);
+  flex-shrink: 0;
+}
+.day-todo-head.done {
+  background: linear-gradient(180deg, #34d399 0%, #6ee7b7 100%);
+}
+.day-todo-date {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #111;
+}
+.day-todo-dow {
+  font-family: var(--title);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.day-todo-chip {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  background: rgba(15, 26, 54, 0.88);
+  color: #fff8f0;
+  font-family: var(--mono);
+}
+.day-todo-chip.soft {
+  background: rgba(15, 26, 54, 0.12);
+  color: #0f1a36;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.day-todo-badge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #111;
+}
+.day-todo-badge.soft {
+  opacity: 0.75;
+}
+.day-todo-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 0.65rem 0.55rem 0.75rem;
+  overflow: auto;
+  background: #fbfbfd;
+}
+.day-todo-body.done {
+  background: #f4fbf7;
+}
+.day-todo-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.day-todo-capsule {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  border-radius: 999px;
+  cursor: pointer;
+  background: #eef2f7;
+  border: 1px solid transparent;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+.day-todo-list li.done .day-todo-capsule {
+  opacity: 0.62;
+}
+.day-todo-list li.kind-leetcode .day-todo-capsule {
+  background: #e8f0fe;
+  border-color: rgba(59, 130, 246, 0.25);
+}
+.day-todo-list li.kind-concept .day-todo-capsule {
+  background: #e7f6f3;
+  border-color: rgba(15, 118, 110, 0.2);
+}
+.day-todo-list li.kind-sql .day-todo-capsule,
+.day-todo-list li.kind-aptitude .day-todo-capsule,
+.day-todo-list li.kind-sysdesign .day-todo-capsule {
+  background: #eef1f4;
+  border-color: rgba(100, 116, 139, 0.22);
+}
+.day-todo-list li.kind-ml .day-todo-capsule {
+  background: #f3e8ff;
+  border-color: rgba(124, 58, 237, 0.22);
+}
+.day-todo-list li.kind-paper .day-todo-capsule {
+  background: #fff1e7;
+  border-color: rgba(234, 88, 12, 0.22);
+}
+.day-todo-list li.kind-module .day-todo-capsule,
+.day-todo-list li.optional .day-todo-capsule {
+  background: #f3f4f6;
+  border-color: rgba(170, 176, 187, 0.35);
+}
+.day-todo-list input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.day-todo-radio {
+  flex: 0 0 auto;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  border: 2px solid #93c5fd;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.day-todo-list li.kind-concept .day-todo-radio {
+  border-color: #14b8a6;
+}
+.day-todo-list li.kind-sql .day-todo-radio,
+.day-todo-list li.kind-aptitude .day-todo-radio,
+.day-todo-list li.kind-sysdesign .day-todo-radio {
+  border-color: #94a3b8;
+}
+.day-todo-list li.kind-ml .day-todo-radio {
+  border-color: #a78bfa;
+}
+.day-todo-list li.kind-paper .day-todo-radio {
+  border-color: #fb923c;
+}
+.day-todo-list li.kind-module .day-todo-radio,
+.day-todo-list li.optional .day-todo-radio {
+  border-color: #cbd5e1;
+}
+.day-todo-list li.done .day-todo-radio {
+  background: currentColor;
+  border-color: currentColor;
+  color: #1f4fa3;
+}
+.day-todo-list li.kind-concept.done .day-todo-radio {
+  color: #0f766e;
+}
+.day-todo-list li.kind-sql.done .day-todo-radio {
+  color: #475569;
+}
+.day-todo-list li.kind-paper.done .day-todo-radio {
+  color: #ea580c;
+}
+.day-todo-list li.kind-module.done .day-todo-radio,
+.day-todo-list li.optional.done .day-todo-radio {
+  color: #94a3b8;
+}
+.day-todo-list li.done .day-todo-radio svg {
+  color: #fff;
+}
+.day-todo-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.3;
+}
+.day-todo-list li.optional .day-todo-text {
+  color: #6b7280;
+  font-weight: 500;
+}
+.day-todo-list li.done .day-todo-text {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  opacity: 0.85;
+}
+.day-todo-foot,
+.day-todo-note {
+  margin: 0.85rem 0 0;
+  font-size: 0.82rem;
+  color: #334155;
+  font-weight: 500;
+}
+.day-todo-note {
+  position: relative;
+  overflow: hidden;
+  min-height: 3rem;
+}
+.day-card-confetti {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.day-card-confetti-piece {
+  position: absolute;
+  top: -8px;
+  border-radius: 2px;
+  animation-name: day-confetti-fall;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+@keyframes day-confetti-fall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(220px) rotate(640deg);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .day-card-confetti-piece {
+    animation: none !important;
+  }
+}
+@media (max-width: 900px) {
+  .forge-week-bento {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: none;
+    grid-auto-rows: minmax(150px, 1fr);
+  }
+
+  .forge-week-bento > *,
+  .forge-week-bento > :nth-child(n + 5) {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 640px) {
+  .forge-week-bento {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(160px, auto);
+  }
+
+  .forge-week-bento > *,
+  .forge-week-bento > :nth-child(n + 5) {
+    grid-column: auto;
+  }
+
+  .landing-viewport .forge-mini-row,
+  .landing-viewport .forge-paper-inline {
+    display: none;
+  }
+}
+
+.forge-streak-week {
+  margin: 0.55rem 0 0.35rem;
+  max-width: 360px;
+}
+
+.forge-hud-secondary {
+  margin-top: 0.45rem;
+}
+
+.streak-week {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 360px;
+  background: #ffffff;
+  border: 2px solid #e5e7eb;
+  box-shadow: 0 0 16px rgba(18, 45, 88, 0.1);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.streak-week-top {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px 12px 0;
+  gap: 0;
+}
+
+.streak-week-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 48px;
+  flex: 0 0 48px;
+}
+
+.streak-week-label {
+  width: 100%;
+  height: 24px;
+  font-family: var(--hand);
+  font-weight: 500;
+  font-size: 15px;
+  line-height: 24px;
+  text-align: center;
+  color: #030712;
+}
+
+.streak-week-bg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 4px;
+  box-sizing: border-box;
+}
+
+.streak-week-day.band-mid .streak-week-bg,
+.streak-week-day.band-solo .streak-week-bg {
+  background: #ffe8e0;
+}
+
+.streak-week-day.band-end .streak-week-bg {
+  background: #ffe8e0;
+  border-radius: 0 9999px 9999px 0;
+}
+
+.streak-week-day.band-solo .streak-week-bg {
+  border-radius: 9999px;
+}
+
+.streak-week-ring {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: #ffffff;
+  border: 2px solid #aab0bb;
+  border-radius: 9999px;
+}
+
+.streak-week-ring.status-done {
+  border-color: #ff6333;
+}
+
+.streak-week-ring.status-today {
+  border-color: #030712;
+}
+
+.streak-week-ring.status-ghost {
+  border-color: #aab0bb;
+}
+
+.streak-week-ring.status-empty {
+  border-color: #aab0bb;
+}
+
+.streak-week-ico {
+  flex-shrink: 0;
+}
+
+.streak-week-ico.hot {
+  color: #ff6333;
+}
+
+.streak-week-ico.mute {
+  color: #aab0bb;
+}
+
+.streak-week-bottom {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px 16px;
+  gap: 8px;
+}
+
+.streak-week-count {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--hand);
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 24px;
+  color: #030712;
+}
+
+.streak-week-savers {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.streak-week-saver.on {
+  color: #ff6333;
+}
+
+.streak-week-saver.off {
+  color: #aab0bb;
+}
+
+.forge-embed.is-compact .forge-week-toolbar {
+  margin-bottom: 0.4rem;
+  padding: 0 2px;
+}
+
+.forge-embed.is-compact .forge-week-nav-label h3 {
+  font-size: 1.05rem;
+}
+
+.forge-embed.is-compact .forge-week-nav .forge-hours {
+  font-size: 0.72rem;
+}
+
+.forge-embed.is-compact .forge-week-arrow {
+  width: 1.7rem;
+  height: 1.7rem;
+  font-size: 1.05rem;
+}
+
+.forge-embed.is-compact .forge-kind-legend {
+  gap: 0.35rem 0.55rem;
+}
+
+.forge-embed.is-compact .forge-legend-item {
+  font-size: 0.65rem;
+}
+
+.forge-embed.is-compact .forge-week-bento {
+  gap: 0.5rem;
+}
+
+.forge-embed.is-compact .day-todo-head {
+  padding: 0.35rem 0.55rem;
+}
+
+.forge-embed.is-compact .day-todo-capsule {
+  padding: 0.55rem 0.7rem;
+  gap: 0.55rem;
+}
+
+.forge-embed.is-compact .day-todo-text {
+  font-size: 0.74rem;
+}
+
+.forge-embed.is-compact .day-todo-body {
+  padding: 0.5rem 0.4rem 0.55rem;
+}
+
+.forge-embed.is-compact .day-todo-list {
+  gap: 0.45rem;
+}
+
+.forge-embed.is-compact .forge-mini-row {
+  margin-top: 0.35rem;
+  padding: 0 10px;
+}
+
+.landing-viewport .forge-embed.is-compact .forge-mini-row {
+  display: none;
+}
+
+.master-list-page {
+  max-width: 1100px;
 }
 .forge-quest.done,
 .forge-quest.mastered {
