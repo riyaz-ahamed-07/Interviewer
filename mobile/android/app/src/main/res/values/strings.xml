@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kaizen</string>
+    <string name="kaizen_widget_description">Streak, level, and next Atlas task</string>
+</resources>
